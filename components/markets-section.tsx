@@ -17,88 +17,54 @@ export function MarketsSection() {
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
 
-  // Hakee tuoreet kohteet tietokannasta
-  const fetchMarkets = async () => {
-    try {
-      const { data, error } = await supabase.from('markets').select('*')
-      if (!error && data) {
-        setMarkets(data)
-      }
-    } catch (err) {
-      console.error('Latausvirhe:', err)
-    } finally {
-      setLoading(false)
+  // Haetaan kohteet
+  const loadData = async () => {
+    const { data, error } = await supabase.from('markets').select('*')
+    if (error) {
+      console.error('Haku virhe:', error)
+    } else if (data) {
+      setMarkets(data)
     }
+    setLoading(false)
   }
 
   useEffect(() => {
-    fetchMarkets()
+    loadData()
 
-    // 1. Suora WebSocket-kanava selainten välillä (toimii ilman Supabasen DB-asetuksia)
-    const channel = supabase.channel('markets-broadcast-sync')
+    // Päivitetään tiedot automaattisesti 3 sekunnin välein
+    const timer = setInterval(() => {
+      loadData()
+    }, 3000)
 
-    channel
-      .on('broadcast', { event: 'vote-updated' }, (payload) => {
-        if (payload.payload) {
-          const { marketId, newYes, newNo } = payload.payload
-          setMarkets((prev) =>
-            prev.map((m) =>
-              m.id === marketId ? { ...m, yes_votes: newYes, no_votes: newNo } : m
-            )
-          )
-        }
-      })
-      .subscribe()
-
-    // 2. Varmistus: Taustapäivitys 5 sekunnin välein (varmistaa että sivu pysyy ajan tasalla)
-    const interval = setInterval(() => {
-      fetchMarkets()
-    }, 5000)
-
-    return () => {
-      supabase.removeChannel(channel)
-      clearInterval(interval)
-    }
+    return () => clearInterval(timer)
   }, [])
 
   const handleVote = async (marketId: string, choice: 'YES' | 'NO') => {
-    const targetMarket = markets.find((m) => m.id === marketId)
-    if (!targetMarket) return
+    const target = markets.find((m) => m.id === marketId)
+    if (!target) return
 
-    const currentYes = Number(targetMarket.yes_votes || 0)
-    const currentNo = Number(targetMarket.no_votes || 0)
+    const currentYes = Number(target.yes_votes || 0)
+    const currentNo = Number(target.no_votes || 0)
 
-    const newYesVotes = choice === 'YES' ? currentYes + 1 : currentYes
-    const newNoVotes = choice === 'NO' ? currentNo + 1 : currentNo
+    const newYes = choice === 'YES' ? currentYes + 1 : currentYes
+    const newNo = choice === 'NO' ? currentNo + 1 : currentNo
 
-    // A. Päivitetään oma ruutu välittömästi
+    // 1. Päivitetään ruutu heti
     setMarkets((prev) =>
       prev.map((m) =>
-        m.id === marketId
-          ? { ...m, yes_votes: newYesVotes, no_votes: newNoVotes }
-          : m
+        m.id === marketId ? { ...m, yes_votes: newYes, no_votes: newNo } : m
       )
     )
 
-    // B. Lähetetään viesti muille avoimille selaimille livenä
-    const channel = supabase.channel('markets-broadcast-sync')
-    channel.send({
-      type: 'broadcast',
-      event: 'vote-updated',
-      payload: { marketId, newYes: newYesVotes, newNo: newNoVotes },
-    })
-
-    // C. Tallennetaan uusi äänimäärä Supabaseen
+    // 2. Tallennetaan tietokantaan
     const { error } = await supabase
       .from('markets')
-      .update({
-        yes_votes: newYesVotes,
-        no_votes: newNoVotes,
-      })
+      .update({ yes_votes: newYes, no_votes: newNo })
       .eq('id', marketId)
 
     if (error) {
-      console.error('Tallennusvirhe Supabasessa:', error.message)
+      alert(`Tietokantavirhe: ${error.message}`)
+      console.error('Päivitysvirhe:', error)
     }
   }
 
@@ -110,7 +76,6 @@ export function MarketsSection() {
 
   return (
     <div>
-      {/* Kategoriapainikkeet */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {categories.map((cat) => (
           <button
@@ -127,7 +92,6 @@ export function MarketsSection() {
         ))}
       </div>
 
-      {/* Kortit */}
       {loading ? (
         <div className="py-12 text-center text-sm text-gray-400">Ladataan kohteita...</div>
       ) : filteredMarkets.length === 0 ? (
@@ -159,8 +123,8 @@ export function MarketsSection() {
                   </h3>
 
                   <div className="flex justify-between text-xs font-semibold mb-1">
-                    <span className="text-emerald-400">{yesPercent}% KYLLÄ</span>
-                    <span className="text-rose-400">{noPercent}% EI</span>
+                    <span className="text-emerald-400">{yesPercent}% KYLLÄ ({yes})</span>
+                    <span className="text-rose-400">{noPercent}% EI ({no})</span>
                   </div>
                   <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden mb-5 flex">
                     <div className="bg-emerald-500 h-full transition-all duration-300" style={{ width: `${yesPercent}%` }} />
