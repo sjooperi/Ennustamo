@@ -6,24 +6,30 @@ import { supabase } from '@/lib/supabase'
 interface Market {
   id: string
   title: string
-  description: string
   category: string
-  yes_pool: number
-  no_pool: number
+  end_date: string
+  yes_votes: number
+  no_votes: number
+  total_fyrkka?: number
 }
 
 export default function Home() {
   const [markets, setMarkets] = useState<Market[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedCategory, setSelectedCategory] = useState('Kaikki')
 
-  // Haetaan kohteet tietokannasta
+  // Haetaan kohteet Supabasesta
   useEffect(() => {
     async function fetchMarkets() {
-      const { data, error } = await supabase.from('markets').select('*')
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('markets') // Jos Supabasen taulusi nimi on eri (esim. 'kohteet'), vaihda se tähän
+        .select('*')
+
       if (error) {
         console.error('Virhe haettaessa kohteita:', error)
-      } else {
-        setMarkets(data || [])
+      } else if (data) {
+        setMarkets(data)
       }
       setLoading(false)
     }
@@ -31,79 +37,111 @@ export default function Home() {
     fetchMarkets()
   }, [])
 
-  // Veikkaustoiminto: lisää 100 Fyrkkaa valittuun pottiin
-  const handleVote = async (marketId: string, option: 'yes' | 'no', currentPool: number) => {
-    const betAmount = 100
-    const newPool = currentPool + betAmount
-    const updateData = option === 'yes' ? { yes_pool: newPool } : { no_pool: newPool }
-
-    // 1. Päivitetään tietokanta
-    const { error } = await supabase
-      .from('markets')
-      .update(updateData)
-      .eq('id', marketId)
-
-    if (error) {
-      console.error('Virhe veikkauksessa:', error)
-      alert('Veikkaus epäonnistui! Tarkista yhteys.')
-      return
-    }
-
-    // 2. Päivitetään ruudun näkymä välittömästi
-    setMarkets((prevMarkets) =>
-      prevMarkets.map((market) =>
-        market.id === marketId
-          ? {
-              ...market,
-              yes_pool: option === 'yes' ? newPool : market.yes_pool,
-              no_pool: option === 'no' ? newPool : market.no_pool,
-            }
-          : market
-      )
-    )
+  // Äänestysfunktion runko
+  const handleVote = async (marketId: string, choice: 'YES' | 'NO') => {
+    alert(`Veikkasit: ${choice} kohteelle!`)
+    // Tähän kytketään tietokannan päivitys seuraavaksi
   }
 
+  const categories = ['Kaikki', 'Politiikka', 'Talous', 'Urheilu', 'Viihde', 'Teknologia']
+
+  const filteredMarkets = selectedCategory === 'Kaikki' 
+    ? markets 
+    : markets.filter(m => m.category?.toLowerCase() === selectedCategory.toLowerCase())
+
   return (
-    <main className="min-h-screen p-8 bg-slate-950 text-white font-sans">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-extrabold mb-2 text-emerald-400">
-          Ennustamo {"🔮"}
-        </h1>
-        <p className="text-slate-400 mb-8">Suomen ensimmäinen sosiaalinen ennustemarkkina.</p>
+    <main className="min-h-screen bg-[#0d1117] text-white p-6 max-w-6xl mx-auto">
+      {/* Otsikko */}
+      <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
+        <h1 className="text-2xl font-bold text-cyan-400">📈 Ennustamo</h1>
+        <div className="flex gap-6 text-sm text-gray-400">
+          <span className="text-white font-medium">Markkinat</span>
+          <span>Tulostaulukko</span>
+          <span>Säännöt</span>
+        </div>
+      </div>
 
-        {loading ? (
-          <p className="text-slate-500">Ladataan kohteita tietokannasta...</p>
-        ) : markets.length === 0 ? (
-          <p className="text-amber-400">Ei vielä kohteita tietokannassa.</p>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {markets.map((market) => (
-              <div key={market.id} className="p-6 bg-slate-900 border border-slate-800 rounded-xl shadow-lg hover:border-slate-700 transition">
-                <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-950 text-emerald-400 rounded-full border border-emerald-800/50">
-                  {market.category}
-                </span>
-                <h2 className="text-xl font-bold mt-3 mb-2">{market.title}</h2>
-                <p className="text-sm text-slate-400 mb-6">{market.description}</p>
+      <h2 className="text-3xl font-extrabold mb-2">Markkinat</h2>
+      <p className="text-gray-400 mb-6">Valitse kohde ja tee ennustuksesi.</p>
 
-                <div className="flex gap-3">
+      {/* Kategoriat */}
+      <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
+        {categories.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+              selectedCategory === cat
+                ? 'bg-cyan-500 text-black font-semibold'
+                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Lataustila */}
+      {loading ? (
+        <div className="text-center py-12 text-gray-500">Ladataan kohteita Supabasesta...</div>
+      ) : filteredMarkets.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          Ei kohteita tässä kategoriassa tai tietokanta on tyhjä.
+        </div>
+      ) : (
+        /* Korttilistaus */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filteredMarkets.map((market) => {
+            const total = (market.yes_votes || 0) + (market.no_votes || 0)
+            const yesPercent = total > 0 ? Math.round((market.yes_votes / total) * 100) : 50
+            const noPercent = 100 - yesPercent
+
+            return (
+              <div 
+                key={market.id} 
+                className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex justify-between text-xs text-gray-400 mb-3">
+                    <span className="font-semibold text-gray-300">{market.category || 'Yleinen'}</span>
+                    <span>📅 Päättyy {market.end_date ? new Date(market.end_date).toLocaleDateString('fi-FI') : 'Avoin'}</span>
+                  </div>
+
+                  <h3 className="text-lg font-bold mb-4 text-white leading-snug">
+                    {market.title}
+                  </h3>
+
+                  {/* Prosenttipalkki */}
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-emerald-400">{yesPercent}% KYLLÄ</span>
+                    <span className="text-rose-400">{noPercent}% EI</span>
+                  </div>
+                  <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden mb-6 flex">
+                    <div className="bg-emerald-500 h-full transition-all" style={{ width: `${yesPercent}%` }} />
+                    <div className="bg-rose-500 h-full transition-all" style={{ width: `${noPercent}%` }} />
+                  </div>
+                </div>
+
+                {/* Veikkausnapit */}
+                <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={() => handleVote(market.id, 'yes', market.yes_pool)}
-                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg text-sm transition active:scale-95"
+                    onClick={() => handleVote(market.id, 'YES')}
+                    className="py-3 px-4 rounded-xl border border-emerald-500/30 text-emerald-400 font-bold hover:bg-emerald-500/10 transition-colors text-center"
                   >
-                    Kyllä ({market.yes_pool} Fyrkkaa)
+                    KYLLÄ {yesPercent}%
                   </button>
                   <button
-                    onClick={() => handleVote(market.id, 'no', market.no_pool)}
-                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-lg text-sm transition active:scale-95"
+                    onClick={() => handleVote(market.id, 'NO')}
+                    className="py-3 px-4 rounded-xl border border-rose-500/30 text-rose-400 font-bold hover:bg-rose-500/10 transition-colors text-center"
                   >
-                    Ei ({market.no_pool} Fyrkkaa)
+                    EI {noPercent}%
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </main>
   )
 }
