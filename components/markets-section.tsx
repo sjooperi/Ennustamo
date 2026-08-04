@@ -17,48 +17,47 @@ export function MarketsSection() {
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
 
-  useEffect(() => {
-    // 1. Haetaan kohteet
-    async function fetchMarkets() {
-      try {
-        setLoading(true)
-        const { data, error } = await supabase.from('markets').select('*')
-        if (error) {
-          console.error('Virhe haettaessa kohteita:', error.message)
-        } else if (data) {
-          setMarkets(data)
-        }
-      } catch (err) {
-        console.error('Latausvirhe:', err)
-      } finally {
-        setLoading(false)
+  // Hakee tuoreet kohteet tietokannasta
+  const fetchMarkets = async () => {
+    try {
+      const { data, error } = await supabase.from('markets').select('*')
+      if (!error && data) {
+        setMarkets(data)
       }
+    } catch (err) {
+      console.error('Latausvirhe:', err)
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchMarkets()
 
-    // 2. Reaaliaikakuuntelija (Supabase Realtime)
-    const channel = supabase
-      .channel('realtime-markets-channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'markets' },
-        (payload) => {
-          console.log('⚡ Reaaliaikainen muutos vastaanotettu:', payload)
-          if (payload.new) {
-            const updatedMarket = payload.new as Market
-            setMarkets((prev) =>
-              prev.map((m) => (m.id === updatedMarket.id ? updatedMarket : m))
+    // 1. Suora WebSocket-kanava selainten välillä (toimii ilman Supabasen DB-asetuksia)
+    const channel = supabase.channel('markets-broadcast-sync')
+
+    channel
+      .on('broadcast', { event: 'vote-updated' }, (payload) => {
+        if (payload.payload) {
+          const { marketId, newYes, newNo } = payload.payload
+          setMarkets((prev) =>
+            prev.map((m) =>
+              m.id === marketId ? { ...m, yes_votes: newYes, no_votes: newNo } : m
             )
-          }
+          )
         }
-      )
-      .subscribe((status) => {
-        console.log('📡 Realtime-yhteyden tila:', status)
       })
+      .subscribe()
+
+    // 2. Varmistus: Taustapäivitys 5 sekunnin välein (varmistaa että sivu pysyy ajan tasalla)
+    const interval = setInterval(() => {
+      fetchMarkets()
+    }, 5000)
 
     return () => {
       supabase.removeChannel(channel)
+      clearInterval(interval)
     }
   }, [])
 
@@ -72,7 +71,7 @@ export function MarketsSection() {
     const newYesVotes = choice === 'YES' ? currentYes + 1 : currentYes
     const newNoVotes = choice === 'NO' ? currentNo + 1 : currentNo
 
-    // Päivitetään ruutu välittömästi omalla koneella
+    // A. Päivitetään oma ruutu välittömästi
     setMarkets((prev) =>
       prev.map((m) =>
         m.id === marketId
@@ -81,7 +80,15 @@ export function MarketsSection() {
       )
     )
 
-    // Tallennetaan tietokantaan (lähettää muutoksen myös muille käyttäjille)
+    // B. Lähetetään viesti muille avoimille selaimille livenä
+    const channel = supabase.channel('markets-broadcast-sync')
+    channel.send({
+      type: 'broadcast',
+      event: 'vote-updated',
+      payload: { marketId, newYes: newYesVotes, newNo: newNoVotes },
+    })
+
+    // C. Tallennetaan uusi äänimäärä Supabaseen
     const { error } = await supabase
       .from('markets')
       .update({
@@ -91,7 +98,7 @@ export function MarketsSection() {
       .eq('id', marketId)
 
     if (error) {
-      console.error('Äänen tallennus epäonnistui:', error.message)
+      console.error('Tallennusvirhe Supabasessa:', error.message)
     }
   }
 
@@ -103,6 +110,7 @@ export function MarketsSection() {
 
   return (
     <div>
+      {/* Kategoriapainikkeet */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {categories.map((cat) => (
           <button
@@ -119,6 +127,7 @@ export function MarketsSection() {
         ))}
       </div>
 
+      {/* Kortit */}
       {loading ? (
         <div className="py-12 text-center text-sm text-gray-400">Ladataan kohteita...</div>
       ) : filteredMarkets.length === 0 ? (
