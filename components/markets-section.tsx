@@ -17,14 +17,11 @@ export function MarketsSection() {
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
 
-  // 1. Haetaan kohteet Supabasesta
   useEffect(() => {
+    // 1. Haetaan kohteet
     async function fetchMarkets() {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('markets')
-        .select('*')
-
+      const { data, error } = await supabase.from('markets').select('*')
       if (error) {
         console.error('Virhe haettaessa kohteita:', error)
       } else if (data) {
@@ -34,9 +31,28 @@ export function MarketsSection() {
     }
 
     fetchMarkets()
+
+    // 2. Reaaliaikakuuntelija (Supabase Realtime)
+    const channel = supabase
+      .channel('markets-changes')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'markets' },
+        (payload) => {
+          const updatedMarket = payload.new as Market
+          setMarkets((prev) =>
+            prev.map((m) => (m.id === updatedMarket.id ? updatedMarket : m))
+          )
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
-  // 2. Äänen tallennus Supabase-tietokantaan
+  // 3. Äänen tallennus
   const handleVote = async (marketId: string, choice: 'YES' | 'NO') => {
     const targetMarket = markets.find((m) => m.id === marketId)
     if (!targetMarket) return
@@ -44,7 +60,7 @@ export function MarketsSection() {
     const newYesVotes = choice === 'YES' ? (targetMarket.yes_votes || 0) + 1 : (targetMarket.yes_votes || 0)
     const newNoVotes = choice === 'NO' ? (targetMarket.no_votes || 0) + 1 : (targetMarket.no_votes || 0)
 
-    // Päivitetään ruutu välittömästi käyttäjälle
+    // Päivitetään heti paikallinen näkymä
     setMarkets((prev) =>
       prev.map((m) =>
         m.id === marketId
@@ -53,7 +69,7 @@ export function MarketsSection() {
       )
     )
 
-    // Tallennetaan uusi äänimäärä Supabaseen
+    // Tallennetaan Supabaseen
     const { error } = await supabase
       .from('markets')
       .update({
@@ -64,6 +80,7 @@ export function MarketsSection() {
 
     if (error) {
       console.error('Virhe äänen tallentamisessa:', error)
+      alert('Äänen tallennus epäonnistui. Varmista, että ajoit SQL-komennon Supabasessa.')
     }
   }
 
@@ -127,8 +144,8 @@ export function MarketsSection() {
                     <span className="text-rose-400">{noPercent}% EI</span>
                   </div>
                   <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden mb-5 flex">
-                    <div className="bg-emerald-500 h-full transition-all" style={{ width: `${yesPercent}%` }} />
-                    <div className="bg-rose-500 h-full transition-all" style={{ width: `${noPercent}%` }} />
+                    <div className="bg-emerald-500 h-full transition-all duration-300" style={{ width: `${yesPercent}%` }} />
+                    <div className="bg-rose-500 h-full transition-all duration-300" style={{ width: `${noPercent}%` }} />
                   </div>
                 </div>
 
