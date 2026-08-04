@@ -54,11 +54,42 @@ export function MarketsSection() {
 
   // 3. Äänen tallennus
   const handleVote = async (marketId: string, choice: 'YES' | 'NO') => {
-    const targetMarket = markets.find((m) => m.id === marketId)
-    if (!targetMarket) return
+    try {
+      const targetMarket = markets.find((m) => m.id === marketId)
+      if (!targetMarket) return
 
-    const newYesVotes = choice === 'YES' ? (targetMarket.yes_votes || 0) + 1 : (targetMarket.yes_votes || 0)
-    const newNoVotes = choice === 'NO' ? (targetMarket.no_votes || 0) + 1 : (targetMarket.no_votes || 0)
+      const currentYes = Number(targetMarket.yes_votes || 0)
+      const currentNo = Number(targetMarket.no_votes || 0)
+
+      const newYesVotes = choice === 'YES' ? currentYes + 1 : currentYes
+      const newNoVotes = choice === 'NO' ? currentNo + 1 : currentNo
+
+      // Päivitetään näkymä heti ruudulla
+      setMarkets((prev) =>
+        prev.map((m) =>
+          m.id === marketId
+            ? { ...m, yes_votes: newYesVotes, no_votes: newNoVotes }
+            : m
+        )
+      )
+
+      // Tallennetaan Supabaseen
+      const { error } = await supabase
+        .from('markets')
+        .update({
+          yes_votes: newYesVotes,
+          no_votes: newNoVotes,
+        })
+        .eq('id', marketId)
+
+      if (error) {
+        console.error('Tarkka Supabase-virhe:', error)
+        alert(`Supabase-virhe (${error.code}): ${error.message} - ${error.details || ''}`)
+      }
+    } catch (err) {
+      console.error('Äänestys kaatui:', err)
+    }
+  }
 
     // Päivitetään heti paikallinen näkymä
     setMarkets((prev) =>
