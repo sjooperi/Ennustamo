@@ -20,78 +20,59 @@ export function MarketsSection() {
   useEffect(() => {
     // 1. Haetaan kohteet
     async function fetchMarkets() {
-      setLoading(true)
-      const { data, error } = await supabase.from('markets').select('*')
-      if (error) {
-        console.error('Virhe haettaessa kohteita:', error)
-      } else if (data) {
-        setMarkets(data)
+      try {
+        setLoading(true)
+        const { data, error } = await supabase.from('markets').select('*')
+        if (error) {
+          console.error('Virhe haettaessa kohteita:', error.message)
+        } else if (data) {
+          setMarkets(data)
+        }
+      } catch (err) {
+        console.error('Latausvirhe:', err)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
 
     fetchMarkets()
 
     // 2. Reaaliaikakuuntelija (Supabase Realtime)
     const channel = supabase
-      .channel('markets-changes')
+      .channel('realtime-markets-channel')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'markets' },
+        { event: '*', schema: 'public', table: 'markets' },
         (payload) => {
-          const updatedMarket = payload.new as Market
-          setMarkets((prev) =>
-            prev.map((m) => (m.id === updatedMarket.id ? updatedMarket : m))
-          )
+          console.log('⚡ Reaaliaikainen muutos vastaanotettu:', payload)
+          if (payload.new) {
+            const updatedMarket = payload.new as Market
+            setMarkets((prev) =>
+              prev.map((m) => (m.id === updatedMarket.id ? updatedMarket : m))
+            )
+          }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('📡 Realtime-yhteyden tila:', status)
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
   }, [])
 
-  // 3. Äänen tallennus
   const handleVote = async (marketId: string, choice: 'YES' | 'NO') => {
-    try {
-      const targetMarket = markets.find((m) => m.id === marketId)
-      if (!targetMarket) return
+    const targetMarket = markets.find((m) => m.id === marketId)
+    if (!targetMarket) return
 
-      const currentYes = Number(targetMarket.yes_votes || 0)
-      const currentNo = Number(targetMarket.no_votes || 0)
+    const currentYes = Number(targetMarket.yes_votes || 0)
+    const currentNo = Number(targetMarket.no_votes || 0)
 
-      const newYesVotes = choice === 'YES' ? currentYes + 1 : currentYes
-      const newNoVotes = choice === 'NO' ? currentNo + 1 : currentNo
+    const newYesVotes = choice === 'YES' ? currentYes + 1 : currentYes
+    const newNoVotes = choice === 'NO' ? currentNo + 1 : currentNo
 
-      // Päivitetään näkymä heti ruudulla
-      setMarkets((prev) =>
-        prev.map((m) =>
-          m.id === marketId
-            ? { ...m, yes_votes: newYesVotes, no_votes: newNoVotes }
-            : m
-        )
-      )
-
-      // Tallennetaan Supabaseen
-      const { error } = await supabase
-        .from('markets')
-        .update({
-          yes_votes: newYesVotes,
-          no_votes: newNoVotes,
-        })
-        .eq('id', marketId)
-
-      if (error) {
-        console.error('Tarkka Supabase-virhe:', error)
-        alert(`Supabase-virhe (${error.code}): ${error.message} - ${error.details || ''}`)
-      }
-    } catch (err) {
-      console.error('Äänestys kaatui:', err)
-    }
-  }
-
-    // Päivitetään heti paikallinen näkymä
+    // Päivitetään ruutu välittömästi omalla koneella
     setMarkets((prev) =>
       prev.map((m) =>
         m.id === marketId
@@ -100,7 +81,7 @@ export function MarketsSection() {
       )
     )
 
-    // Tallennetaan Supabaseen
+    // Tallennetaan tietokantaan (lähettää muutoksen myös muille käyttäjille)
     const { error } = await supabase
       .from('markets')
       .update({
@@ -110,8 +91,7 @@ export function MarketsSection() {
       .eq('id', marketId)
 
     if (error) {
-      console.error('Virhe äänen tallentamisessa:', error)
-      alert('Äänen tallennus epäonnistui. Varmista, että ajoit SQL-komennon Supabasessa.')
+      console.error('Äänen tallennus epäonnistui:', error.message)
     }
   }
 
@@ -123,7 +103,6 @@ export function MarketsSection() {
 
   return (
     <div>
-      {/* Kategoriapainikkeet */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {categories.map((cat) => (
           <button
@@ -140,7 +119,6 @@ export function MarketsSection() {
         ))}
       </div>
 
-      {/* Lataustila tai lista */}
       {loading ? (
         <div className="py-12 text-center text-sm text-gray-400">Ladataan kohteita...</div>
       ) : filteredMarkets.length === 0 ? (
@@ -150,8 +128,10 @@ export function MarketsSection() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredMarkets.map((market) => {
-            const total = (market.yes_votes || 0) + (market.no_votes || 0)
-            const yesPercent = total > 0 ? Math.round((market.yes_votes / total) * 100) : 50
+            const yes = Number(market.yes_votes || 0)
+            const no = Number(market.no_votes || 0)
+            const total = yes + no
+            const yesPercent = total > 0 ? Math.round((yes / total) * 100) : 50
             const noPercent = 100 - yesPercent
 
             return (
@@ -169,7 +149,6 @@ export function MarketsSection() {
                     {market.title}
                   </h3>
 
-                  {/* Prosenttipalkki */}
                   <div className="flex justify-between text-xs font-semibold mb-1">
                     <span className="text-emerald-400">{yesPercent}% KYLLÄ</span>
                     <span className="text-rose-400">{noPercent}% EI</span>
@@ -180,7 +159,6 @@ export function MarketsSection() {
                   </div>
                 </div>
 
-                {/* Veikkausnapit */}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleVote(market.id, 'YES')}
