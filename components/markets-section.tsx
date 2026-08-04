@@ -16,32 +16,41 @@ export function MarketsSection() {
   const [markets, setMarkets] = useState<Market[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
+  const [debugMsg, setDebugMsg] = useState<string>('Odotetaan toimintoa...')
 
-  // Haetaan kohteet
   const loadData = async () => {
-    const { data, error } = await supabase.from('markets').select('*')
-    if (error) {
-      console.error('Haku virhe:', error)
-    } else if (data) {
-      setMarkets(data)
+    try {
+      const { data, error } = await supabase.from('markets').select('*')
+      if (error) {
+        setDebugMsg(`Hakuvirhe: ${error.message}`)
+      } else if (data) {
+        setMarkets(data)
+        setDebugMsg(`Haettu ${data.length} kohdetta Supabasesta klo ${new Date().toLocaleTimeString()}`)
+      }
+    } catch (err) {
+      setDebugMsg(`Virhe haussa: ${String(err)}`)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => {
     loadData()
 
-    // Päivitetään tiedot automaattisesti 3 sekunnin välein
+    // Päivitetään automaattisesti 2 sekunnin välein
     const timer = setInterval(() => {
       loadData()
-    }, 3000)
+    }, 2000)
 
     return () => clearInterval(timer)
   }, [])
 
   const handleVote = async (marketId: string, choice: 'YES' | 'NO') => {
     const target = markets.find((m) => m.id === marketId)
-    if (!target) return
+    if (!target) {
+      setDebugMsg(`Virhe: Kohdetta ID:llä ${marketId} ei löytynyt muistista.`)
+      return
+    }
 
     const currentYes = Number(target.yes_votes || 0)
     const currentNo = Number(target.no_votes || 0)
@@ -49,22 +58,28 @@ export function MarketsSection() {
     const newYes = choice === 'YES' ? currentYes + 1 : currentYes
     const newNo = choice === 'NO' ? currentNo + 1 : currentNo
 
-    // 1. Päivitetään ruutu heti
+    setDebugMsg(`Lähetetään päivitystä ID:lle ${marketId}... (YES: ${newYes}, NO: ${newNo})`)
+
+    // Päivitetään heti paikallisesti
     setMarkets((prev) =>
       prev.map((m) =>
         m.id === marketId ? { ...m, yes_votes: newYes, no_votes: newNo } : m
       )
     )
 
-    // 2. Tallennetaan tietokantaan
-    const { error } = await supabase
+    // Lähetetään Supabaseen
+    const { data, error, count } = await supabase
       .from('markets')
       .update({ yes_votes: newYes, no_votes: newNo })
       .eq('id', marketId)
+      .select()
 
     if (error) {
-      alert(`Tietokantavirhe: ${error.message}`)
-      console.error('Päivitysvirhe:', error)
+      setDebugMsg(`Supabase UPDATE Virhe: ${error.message} (${error.details || ''})`)
+    } else if (!data || data.length === 0) {
+      setDebugMsg(`VAROITUS: Supabase ei päivittänyt yhtään riviä! Löytyykö ID:tä '${marketId}' tietokannasta?`)
+    } else {
+      setDebugMsg(`ONNISTUI! Tallennettu tietokantaan: ${JSON.stringify(data[0])}`)
     }
   }
 
@@ -76,6 +91,11 @@ export function MarketsSection() {
 
   return (
     <div>
+      {/* DEBUG-ILMOITUSLAATIKKO SIVUN YLÄREUNASSA */}
+      <div className="mb-6 p-3 bg-blue-950 border border-blue-600 rounded-lg text-xs font-mono text-blue-200">
+        <strong>Tila:</strong> {debugMsg}
+      </div>
+
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {categories.map((cat) => (
           <button
