@@ -16,8 +16,9 @@ export default function Page() {
   const [markets, setMarkets] = useState<Market[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
+  const [userVotes, setUserVotes] = useState<Record<string, 'YES' | 'NO'>>({})
 
-  // 1. Haetaan kohteet Supabasesta
+  // 1. Haetaan kohteet Supabasesta ja käyttäjän aiemmat äänet localStoragesta
   useEffect(() => {
     async function fetchMarkets() {
       setLoading(true)
@@ -29,18 +30,32 @@ export default function Page() {
       }
       setLoading(false)
     }
+
+    // Ladataan aiemmat äänet selaimen muistista
+    const savedVotes = localStorage.getItem('ennustamo_user_votes')
+    if (savedVotes) {
+      try {
+        setUserVotes(JSON.parse(savedVotes))
+      } catch (e) {
+        console.error('Virhe äänten lataamisessa muistista:', e)
+      }
+    }
+
     fetchMarkets()
   }, [])
 
-  // 2. Äänen tallennus Supabase-tietokantaan
+  // 2. Äänen tallennus Supabaseen ja selaimen muistiin
   const handleVote = async (marketId: string, choice: 'YES' | 'NO') => {
+    // Jos käyttäjä on jo äänestänyt tätä kohdetta, ei tehdä mitään
+    if (userVotes[marketId]) return
+
     const targetMarket = markets.find((m) => m.id === marketId)
     if (!targetMarket) return
 
     const newYesVotes = choice === 'YES' ? (targetMarket.yes_votes || 0) + 1 : (targetMarket.yes_votes || 0)
     const newNoVotes = choice === 'NO' ? (targetMarket.no_votes || 0) + 1 : (targetMarket.no_votes || 0)
 
-    // Päivitetään tila heti käyttöliittymään
+    // Päivitetään tila ruudulle
     setMarkets((prev) =>
       prev.map((m) =>
         m.id === marketId
@@ -49,7 +64,12 @@ export default function Page() {
       )
     )
 
-    // Tallennetaan tietokantaan
+    // Tallennetaan tieto, että käyttäjä on äänestänyt
+    const updatedUserVotes = { ...userVotes, [marketId]: choice }
+    setUserVotes(updatedUserVotes)
+    localStorage.setItem('ennustamo_user_votes', JSON.stringify(updatedUserVotes))
+
+    // Tallennetaan uusi äänimäärä Supabase-tietokantaan
     const { error } = await supabase
       .from('markets')
       .update({
@@ -59,7 +79,7 @@ export default function Page() {
       .eq('id', marketId)
 
     if (error) {
-      console.error('Virhe äänen tallentamisessa:', error)
+      console.error('Virhe äänen tallentamisessa Supabaseen:', error)
     }
   }
 
@@ -150,6 +170,7 @@ export default function Page() {
                     const total = (market.yes_votes || 0) + (market.no_votes || 0)
                     const yesPercent = total > 0 ? Math.round((market.yes_votes / total) * 100) : 50
                     const noPercent = 100 - yesPercent
+                    const hasVoted = userVotes[market.id]
 
                     return (
                       <div
@@ -178,16 +199,30 @@ export default function Page() {
 
                         <div className="grid grid-cols-2 gap-2">
                           <button
+                            disabled={!!hasVoted}
                             onClick={() => handleVote(market.id, 'YES')}
-                            className="py-2.5 px-3 rounded-lg border border-emerald-500/30 text-emerald-400 font-bold hover:bg-emerald-500/10 text-xs transition-colors"
+                            className={`py-2.5 px-3 rounded-lg border font-bold text-xs transition-colors ${
+                              hasVoted === 'YES'
+                                ? 'bg-emerald-500 text-black border-emerald-500'
+                                : hasVoted
+                                ? 'opacity-40 border-gray-700 text-gray-500 cursor-not-allowed'
+                                : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                            }`}
                           >
-                            KYLLÄ {yesPercent}%
+                            {hasVoted === 'YES' ? 'ÄÄNESTETTY: KYLLÄ' : `KYLLÄ ${yesPercent}%`}
                           </button>
                           <button
+                            disabled={!!hasVoted}
                             onClick={() => handleVote(market.id, 'NO')}
-                            className="py-2.5 px-3 rounded-lg border border-rose-500/30 text-rose-400 font-bold hover:bg-rose-500/10 text-xs transition-colors"
+                            className={`py-2.5 px-3 rounded-lg border font-bold text-xs transition-colors ${
+                              hasVoted === 'NO'
+                                ? 'bg-rose-500 text-black border-rose-500'
+                                : hasVoted
+                                ? 'opacity-40 border-gray-700 text-gray-500 cursor-not-allowed'
+                                : 'border-rose-500/30 text-rose-400 hover:bg-rose-500/10'
+                            }`}
                           >
-                            EI {noPercent}%
+                            {hasVoted === 'NO' ? 'ÄÄNESTETTY: EI' : `EI ${noPercent}%`}
                           </button>
                         </div>
                       </div>
