@@ -111,7 +111,7 @@ export function MarketsSection() {
           </button>
         ))}
       </div>
-
+      <a href="/tulostaulukko" className="hover:text-cyan-400 font-medium">Tulostaulukko</a>
       {loading ? (
         <div className="py-12 text-center text-sm text-gray-400">Ladataan kohteita...</div>
       ) : filteredMarkets.length === 0 ? (
