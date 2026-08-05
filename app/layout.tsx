@@ -22,6 +22,8 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
   colorScheme: 'dark',
   themeColor: '#0c0e14',
 }
@@ -36,7 +38,7 @@ export default function RootLayout({
       lang="fi"
       className={`${geistSans.variable} ${geistMono.variable} bg-background`}
     >
-      <body className="font-sans antialiased">
+      <body className="max-w-full overflow-x-hidden font-sans antialiased">
         <AuthProvider>{children}</AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

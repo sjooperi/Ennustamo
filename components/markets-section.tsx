@@ -197,7 +197,7 @@ export function MarketsSection() {
   )
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-hidden">
       {actionError && (
         <div
           role="alert"
@@ -207,12 +207,12 @@ export function MarketsSection() {
         </div>
       )}
 
-      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+      <div className="mb-6 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {categories.map((cat) => (
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`rounded-full px-4 py-2 text-xs font-medium transition-colors ${
+            className={`shrink-0 rounded-full px-4 py-2 text-xs font-medium transition-colors ${
               selectedCategory === cat
                 ? 'bg-primary font-semibold text-primary-foreground'
                 : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -232,7 +232,7 @@ export function MarketsSection() {
           Ei kohteita tässä kategoriassa.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+        <div className="grid w-full max-w-full grid-cols-1 gap-2.5 md:grid-cols-2">
           {filteredMarkets.map((market) => {
             const yesPool = Number(market.yes_pool || 0)
             const noPool = Number(market.no_pool || 0)

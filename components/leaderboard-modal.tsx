@@ -125,7 +125,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[100] flex max-h-[100dvh] items-end justify-center overflow-hidden sm:items-center sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -137,18 +137,18 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="leaderboard-title"
-        className="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl"
+        className="relative z-10 flex max-h-[min(85dvh,100%)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl"
       >
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <span className="grid size-9 place-items-center rounded-xl bg-primary/15 text-primary">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
               <Trophy className="size-5" />
             </span>
-            <div>
+            <div className="min-w-0">
               <h2 id="leaderboard-title" className="text-base font-semibold">
                 Tulostaulukko
               </h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="truncate text-xs text-muted-foreground">
                 Järjestys saldon mukaan · lähtö {STARTING_BALANCE} F
               </p>
             </div>
@@ -156,14 +156,14 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             aria-label="Sulje"
           >
             <X className="size-5" />
           </button>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
           {loading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Ladataan tulostaulukkoa...
@@ -175,13 +175,17 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
               Ei vielä käyttäjiä tulostaulukossa.
             </p>
           ) : (
-            <table className="w-full text-left text-sm">
+            <table className="w-full max-w-full table-fixed text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 font-medium">#</th>
+                  <th className="w-10 pb-2 font-medium">#</th>
                   <th className="pb-2 font-medium">Käyttäjä</th>
-                  <th className="pb-2 text-right font-medium">Tulos</th>
-                  <th className="pb-2 text-right font-medium">Saldo</th>
+                  <th className="w-[4.5rem] pb-2 text-right font-medium sm:w-20">
+                    Tulos
+                  </th>
+                  <th className="w-[4.5rem] pb-2 text-right font-medium sm:w-20">
+                    Saldo
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -213,8 +217,8 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                         )}
                       </td>
                       <td className="py-2.5 pr-2 align-middle">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-secondary text-[10px] font-semibold sm:size-8 sm:text-xs">
                             {row.initials}
                           </span>
                           <span className="truncate font-medium text-foreground">
@@ -222,9 +226,9 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                           </span>
                         </div>
                       </td>
-                      <td className="py-2.5 pr-2 text-right align-middle">
+                      <td className="py-2.5 pr-1 text-right align-middle">
                         <span
-                          className={`inline-flex items-center justify-end gap-0.5 font-mono text-xs font-semibold tabular-nums ${
+                          className={`inline-flex max-w-full items-center justify-end gap-0.5 truncate font-mono text-[10px] font-semibold tabular-nums sm:text-xs ${
                             row.profit > 0
                               ? 'text-[var(--yes)]'
                               : row.profit < 0
@@ -233,15 +237,15 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                           }`}
                         >
                           {row.profit > 0 ? (
-                            <TrendingUp className="size-3" />
+                            <TrendingUp className="size-3 shrink-0" />
                           ) : row.profit < 0 ? (
-                            <TrendingDown className="size-3" />
+                            <TrendingDown className="size-3 shrink-0" />
                           ) : null}
                           {row.profit > 0 ? '+' : ''}
                           {formatFyrkka(Math.round(row.profit))}
                         </span>
                       </td>
-                      <td className="py-2.5 text-right align-middle font-mono text-xs font-semibold tabular-nums text-primary">
+                      <td className="truncate py-2.5 text-right align-middle font-mono text-[10px] font-semibold tabular-nums text-primary sm:text-xs">
                         {formatFyrkka(Math.round(row.balance))}
                       </td>
                     </tr>

@@ -49,13 +49,13 @@ export function Hero() {
             </Button>
           </div>
 
-          <dl className="mt-10 grid grid-cols-3 gap-4 border-t border-border pt-6">
+          <dl className="mt-10 grid grid-cols-3 gap-2 border-t border-border pt-6 sm:gap-4">
             {STATS.map((stat) => (
-              <div key={stat.label}>
-                <dt className="text-xs text-muted-foreground sm:text-sm">
+              <div key={stat.label} className="min-w-0">
+                <dt className="truncate text-[10px] text-muted-foreground sm:text-sm">
                   {stat.label}
                 </dt>
-                <dd className="mt-1 font-mono text-xl font-semibold tabular-nums sm:text-2xl">
+                <dd className="mt-1 truncate font-mono text-lg font-semibold tabular-nums sm:text-2xl">
                   {stat.value}
                 </dd>
               </div>

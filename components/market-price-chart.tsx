@@ -126,13 +126,13 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
 
   return (
     <div
-      className={`rounded-xl border border-border bg-secondary/30 p-3 ${className ?? ''}`}
+      className={`w-full max-w-full overflow-hidden rounded-xl border border-border bg-secondary/30 p-3 ${className ?? ''}`}
     >
-      <div className="flex gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex w-full max-w-full gap-2 sm:gap-3">
+        <div className="min-w-0 flex-1 overflow-hidden">
           <svg
             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-            className="h-36 w-full touch-none"
+            className="h-28 w-full max-w-full touch-none sm:h-36"
             onMouseMove={handleMouseMove}
             onMouseLeave={() => setHoverIndex(null)}
             aria-hidden
@@ -237,16 +237,18 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
           </svg>
         </div>
 
-        <div className="flex w-16 shrink-0 flex-col justify-between py-1">
+        <div className="flex w-12 shrink-0 flex-col justify-between py-1 sm:w-16">
           <div className="text-right">
-            <p className="text-[10px] font-medium text-[var(--yes)]">KYLLÄ</p>
-            <p className="text-lg font-bold tabular-nums leading-tight text-[var(--yes)]">
+            <p className="text-[9px] font-medium text-[var(--yes)] sm:text-[10px]">
+              KYLLÄ
+            </p>
+            <p className="text-sm font-bold tabular-nums leading-tight text-[var(--yes)] sm:text-lg">
               {formatChartPct(displayYes?.price ?? 0.5)}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-medium text-[var(--no)]">EI</p>
-            <p className="text-lg font-bold tabular-nums leading-tight text-[var(--no)]">
+            <p className="text-[9px] font-medium text-[var(--no)] sm:text-[10px]">EI</p>
+            <p className="text-sm font-bold tabular-nums leading-tight text-[var(--no)] sm:text-lg">
               {formatChartPct(displayNo?.price ?? 0.5)}
             </p>
           </div>

@@ -47,9 +47,9 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-          <a href="/" className="flex shrink-0 items-center gap-2">
+      <header className="sticky top-0 z-50 w-full max-w-full overflow-x-hidden border-b border-border bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 w-full max-w-7xl min-w-0 items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
+          <a href="/" className="flex min-w-0 shrink-0 items-center gap-2">
             <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
               <TrendingUp className="size-5" strokeWidth={2.5} />
             </span>
@@ -94,7 +94,7 @@ export function SiteHeader() {
             />
           </div>
 
-          <div className="ml-auto flex items-center gap-2 lg:ml-3">
+          <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2 lg:ml-3">
             {ready && user ? (
               <>
                 <div className="flex items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/10 px-2.5 py-1.5 text-sm font-semibold text-primary">

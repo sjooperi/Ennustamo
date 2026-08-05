@@ -24,16 +24,16 @@ export function SiteFooter() {
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-8">
+          <div className="grid grid-cols-3 gap-4 sm:gap-8">
             {LINK_GROUPS.map((group) => (
-              <div key={group.title}>
+              <div key={group.title} className="min-w-0">
                 <h3 className="text-sm font-semibold">{group.title}</h3>
                 <ul className="mt-3 flex flex-col gap-2">
                   {group.links.map((link) => (
                     <li key={link}>
                       <a
                         href="#"
-                        className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                        className="break-words text-sm text-muted-foreground transition-colors hover:text-foreground"
                       >
                         {link}
                       </a>

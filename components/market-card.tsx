@@ -120,7 +120,7 @@ export function MarketCard({
   }
 
   return (
-    <article className="flex flex-col rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/30">
+    <article className="flex w-full max-w-full flex-col overflow-hidden rounded-xl border border-border bg-card p-3 transition-colors hover:border-primary/30">
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 font-medium text-foreground">
@@ -148,7 +148,7 @@ export function MarketCard({
         </button>
       </div>
 
-      <h3 className="mt-1.5 text-pretty text-sm font-semibold leading-snug text-foreground">
+      <h3 className="mt-1.5 text-pretty break-words text-sm font-semibold leading-snug text-foreground">
         {market.title}
       </h3>
 
@@ -206,12 +206,12 @@ export function MarketCard({
         </p>
       )}
 
-      <div className="mt-2 grid grid-cols-2 gap-1.5">
+      <div className="mt-2 grid w-full max-w-full grid-cols-2 gap-1.5">
         <button
           type="button"
           onClick={() => openStakePanel('YES')}
           aria-pressed={pendingChoice === 'YES'}
-          className={`inline-flex h-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset transition-all ${
+          className={`inline-flex h-8 min-w-0 items-center justify-center truncate rounded-lg px-1 text-xs font-semibold ring-1 ring-inset transition-all ${
             pendingChoice === 'YES'
               ? 'bg-[var(--yes)] text-[var(--yes-foreground)] ring-[var(--yes)]'
               : 'bg-[var(--yes)]/12 text-[var(--yes)] ring-[var(--yes)]/25 hover:bg-[var(--yes)] hover:text-[var(--yes-foreground)]'
@@ -223,7 +223,7 @@ export function MarketCard({
           type="button"
           onClick={() => openStakePanel('NO')}
           aria-pressed={pendingChoice === 'NO'}
-          className={`inline-flex h-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset transition-all ${
+          className={`inline-flex h-8 min-w-0 items-center justify-center truncate rounded-lg px-1 text-xs font-semibold ring-1 ring-inset transition-all ${
             pendingChoice === 'NO'
               ? 'bg-[var(--no)] text-[var(--no-foreground)] ring-[var(--no)]'
               : 'bg-[var(--no)]/12 text-[var(--no)] ring-[var(--no)]/25 hover:bg-[var(--no)] hover:text-[var(--no-foreground)]'
@@ -234,7 +234,7 @@ export function MarketCard({
       </div>
 
       {stakePanelOpen && pendingChoice && (
-        <div className="mt-2 space-y-2 rounded-lg border border-border bg-secondary/40 p-2.5">
+        <div className="mt-2 w-full max-w-full space-y-2 overflow-hidden rounded-lg border border-border bg-secondary/40 p-2.5">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] font-semibold text-foreground">
               Lisää panosta{' '}

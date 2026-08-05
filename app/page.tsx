@@ -6,13 +6,13 @@ import { SiteHeader } from '@/components/site-header'
 
 export default function Page() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden">
       <SiteHeader />
-      <main>
+      <main className="w-full max-w-full overflow-x-hidden">
         <Hero />
-        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
-            <div>
+        <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="grid w-full max-w-full grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0 max-w-full">
               <div className="mb-6 flex items-end justify-between">
                 <div>
                   <h2 className="text-xl font-semibold tracking-tight">
