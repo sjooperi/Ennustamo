@@ -47,15 +47,18 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full max-w-full overflow-x-hidden border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-7xl min-w-0 items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-50 w-full max-w-full border-b border-border bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 w-full max-w-7xl min-w-0 items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-6 lg:px-8">
           <a href="/" className="flex min-w-0 shrink-0 items-center gap-2">
             <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
               <TrendingUp className="size-5" strokeWidth={2.5} />
             </span>
-            <span className="text-lg font-semibold tracking-tight">Ennustamo</span>
+            <span className="hidden text-lg font-semibold tracking-tight sm:inline">
+              Ennustamo
+            </span>
           </a>
 
+          {/* Desktop nav */}
           <nav className="ml-4 hidden items-center gap-1 md:flex">
             {NAV_LINKS.map((link, i) =>
               link.action === 'leaderboard' ? (
@@ -94,12 +97,23 @@ export function SiteHeader() {
             />
           </div>
 
-          <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2 lg:ml-3">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-3">
+            {/* Always visible on mobile: open leaderboard */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-xl text-primary md:hidden"
+              aria-label="Tulostaulukko"
+              onClick={openLeaderboard}
+            >
+              <Trophy className="size-5" />
+            </Button>
+
             {ready && user ? (
               <>
-                <div className="flex items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/10 px-2.5 py-1.5 text-sm font-semibold text-primary">
-                  <Coins className="size-4" />
-                  <span className="font-mono tabular-nums">
+                <div className="flex max-w-[7.5rem] items-center gap-1 rounded-xl border border-primary/25 bg-primary/10 px-2 py-1.5 text-sm font-semibold text-primary sm:max-w-none sm:gap-1.5 sm:px-2.5">
+                  <Coins className="size-4 shrink-0" />
+                  <span className="truncate font-mono tabular-nums">
                     {formatFyrkka(Math.round(balance))}
                   </span>
                   <span className="hidden font-normal text-primary/80 sm:inline">
@@ -110,7 +124,7 @@ export function SiteHeader() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative size-9 rounded-xl"
+                  className="relative hidden size-9 rounded-xl sm:inline-flex"
                   aria-label="Ilmoitukset"
                 >
                   <Bell className="size-5" />
@@ -129,7 +143,7 @@ export function SiteHeader() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-9 rounded-xl"
+                  className="hidden size-9 rounded-xl sm:inline-flex"
                   aria-label="Kirjaudu ulos"
                   onClick={handleSignOut}
                 >
@@ -146,15 +160,15 @@ export function SiteHeader() {
                   Kirjaudu
                 </Button>
                 <Button
-                  className="h-9 rounded-xl px-3"
+                  className="h-9 rounded-xl px-2.5 sm:px-3"
                   onClick={() => openAuth('register')}
                 >
                   <UserRound className="size-4" />
-                  Luo tili
+                  <span className="hidden sm:inline">Luo tili</span>
                 </Button>
               </>
             ) : (
-              <div className="h-9 w-24 animate-pulse rounded-xl bg-secondary" />
+              <div className="h-9 w-16 animate-pulse rounded-xl bg-secondary sm:w-24" />
             )}
 
             <Button
@@ -168,6 +182,38 @@ export function SiteHeader() {
             </Button>
           </div>
         </div>
+
+        {/* Mobile: horizontally scrollable nav chips */}
+        <nav
+          aria-label="Päänavigaatio"
+          className="flex max-w-full gap-1.5 overflow-x-auto overscroll-x-contain border-t border-border/60 px-3 py-2 md:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {NAV_LINKS.map((link, i) =>
+            link.action === 'leaderboard' ? (
+              <button
+                key={link.label}
+                type="button"
+                onClick={openLeaderboard}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary"
+              >
+                <Trophy className="size-3.5" />
+                {link.label}
+              </button>
+            ) : (
+              <a
+                key={link.label}
+                href={link.href}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  i === 0
+                    ? 'bg-secondary text-foreground'
+                    : 'bg-secondary/60 text-muted-foreground'
+                }`}
+              >
+                {link.label}
+              </a>
+            )
+          )}
+        </nav>
 
         {mobileOpen && (
           <nav className="border-t border-border px-4 py-3 md:hidden">
