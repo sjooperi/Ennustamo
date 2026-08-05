@@ -1,4 +1,8 @@
+'use client'
+
+import { useState } from 'react'
 import { Crown, MessageSquare, TrendingUp } from 'lucide-react'
+import { LeaderboardModal } from '@/components/leaderboard-modal'
 import { DISCUSSIONS, LEADERBOARD, formatFyrkka } from '@/lib/data'
 
 const RANK_STYLES = [
@@ -8,9 +12,11 @@ const RANK_STYLES = [
 ]
 
 export function CommunitySidebar() {
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+
   return (
     <aside className="flex flex-col gap-6">
-      {/* Leaderboard */}
+      {/* Leaderboard preview */}
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center gap-2">
           <Crown className="size-5 text-[oklch(0.8_0.15_85)]" />
@@ -41,7 +47,11 @@ export function CommunitySidebar() {
             </li>
           ))}
         </ul>
-        <button className="mt-4 w-full rounded-xl border border-border bg-secondary/50 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+        <button
+          type="button"
+          onClick={() => setLeaderboardOpen(true)}
+          className="mt-4 w-full rounded-xl border border-border bg-secondary/50 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
           Näytä koko tulostaulukko
         </button>
       </section>
@@ -73,6 +83,11 @@ export function CommunitySidebar() {
           ))}
         </ul>
       </section>
+
+      <LeaderboardModal
+        open={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+      />
     </aside>
   )
 }

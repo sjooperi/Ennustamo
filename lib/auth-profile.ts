@@ -1,5 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { normalizeUsername, validateUsername } from '@/lib/display-name'
 
 export type Profile = {
   id: string
@@ -44,12 +45,12 @@ function avatarFromUser(user: User): string | null {
 function mapRow(row: ProfileRow, user?: User): Profile {
   const balance = Number(row.balance ?? row.fyrkat ?? STARTING_BALANCE)
   const fyrkat = Number(row.fyrkat ?? row.balance ?? STARTING_BALANCE)
+  const googleName = user ? displayNameFromUser(user) : null
   return {
     id: row.id,
     email: row.email ?? user?.email ?? null,
-    display_name:
-      row.display_name || row.username || (user ? displayNameFromUser(user) : null),
-    username: row.username ?? null,
+    display_name: row.display_name || googleName,
+    username: row.username?.trim() ? row.username.trim() : null,
     avatar_url: row.avatar_url ?? (user ? avatarFromUser(user) : null),
     balance,
     fyrkat,
@@ -65,7 +66,6 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
     .maybeSingle()
 
   if (error && error.code !== 'PGRST116') {
-    // Older schema without email/display_name — try minimal select
     if (
       error.message?.includes('email') ||
       error.message?.includes('display_name') ||
@@ -84,7 +84,18 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
   }
 
   if (data) {
-    return mapRow(data, user)
+    const profile = mapRow(data, user)
+    const googleName = displayNameFromUser(user)
+
+    if (!data.display_name && googleName) {
+      await supabase
+        .from('profiles')
+        .update({ display_name: googleName, updated_at: new Date().toISOString() })
+        .eq('id', user.id)
+      profile.display_name = googleName
+    }
+
+    return profile
   }
 
   const name = displayNameFromUser(user)
@@ -92,7 +103,7 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
     id: user.id,
     email: user.email,
     display_name: name,
-    username: name,
+    username: null as string | null,
     avatar_url: avatarFromUser(user),
     balance: STARTING_BALANCE,
     fyrkat: STARTING_BALANCE,
@@ -114,7 +125,6 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
       if (retry) return mapRow(retry, user)
     }
 
-    // Schema without email/display_name columns
     if (
       insertError.message?.includes('email') ||
       insertError.message?.includes('display_name') ||
@@ -125,7 +135,7 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
         .from('profiles')
         .insert({
           id: user.id,
-          username: name,
+          username: null,
           avatar_url: avatarFromUser(user),
           balance: STARTING_BALANCE,
           fyrkat: STARTING_BALANCE,
@@ -145,7 +155,7 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
       id: user.id,
       email: user.email ?? null,
       display_name: name,
-      username: name,
+      username: null,
       avatar_url: avatarFromUser(user),
       balance: STARTING_BALANCE,
       fyrkat: STARTING_BALANCE,
@@ -153,4 +163,49 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
   }
 
   return mapRow(created, user)
+}
+
+export async function updateUsernameForUser(
+  userId: string,
+  rawUsername: string
+): Promise<{ ok: true; username: string | null } | { ok: false; error: string }> {
+  const trimmed = normalizeUsername(rawUsername)
+
+  // Empty input clears custom nickname → fallback to Google short name.
+  if (!trimmed) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        username: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId)
+
+    if (error) {
+      console.error('Failed to clear username:', error.message)
+      return { ok: false, error: 'Nimimerkin tyhjennys epäonnistui.' }
+    }
+    return { ok: true, username: null }
+  }
+
+  const validationError = validateUsername(trimmed)
+  if (validationError) return { ok: false, error: validationError }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      username: trimmed,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+
+  if (error) {
+    if (error.code === '23505') {
+      return { ok: false, error: 'Nimimerkki on jo käytössä. Valitse toinen.' }
+    }
+    console.error('Failed to update username:', error.message)
+    return { ok: false, error: 'Nimimerkin tallennus epäonnistui.' }
+  }
+
+  return { ok: true, username: trimmed }
 }

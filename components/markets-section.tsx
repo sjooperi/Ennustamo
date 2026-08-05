@@ -1,36 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  formatPct,
-  formatShares,
-  getPrices,
-  quoteBuy,
-} from '@/lib/amm'
 import { useAuth } from '@/lib/auth-context'
+import { buildPriceHistory, type MarketBet } from '@/lib/price-history'
 import { supabase } from '@/lib/supabase'
+import { MarketCard, type LiveMarket, type UserPosition } from '@/components/market-card'
 
 type BetChoice = 'YES' | 'NO'
 
-interface Market {
-  id: string
-  title: string
-  category: string
-  end_date: string
-  yes_pool: number
-  no_pool: number
-  yes_votes: number
-  no_votes: number
-}
-
-interface UserPosition {
-  choice: BetChoice
-  amount: number
-  shares: number
-}
-
-const DEFAULT_STAKE = 10
-const STAKE_PRESETS = [10, 25, 50, 100]
+const DEFAULT_STAKE = 0
 
 function translateBetError(message: string): string {
   if (message.includes('UNAUTHORIZED')) return 'Kirjaudu sisään lyödäksesi vetoa.'
@@ -44,17 +22,14 @@ function translateBetError(message: string): string {
 
 export function MarketsSection() {
   const { user, ready, balance, openAuth, refreshProfile } = useAuth()
-  const [markets, setMarkets] = useState<Market[]>([])
+  const [markets, setMarkets] = useState<(LiveMarket & { created_at?: string })[]>([])
   const [userPositions, setUserPositions] = useState<Record<string, UserPosition[]>>({})
   const [loading, setLoading] = useState(true)
   const [bettingMarketId, setBettingMarketId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
   const [actionError, setActionError] = useState<string | null>(null)
   const [stakeByMarket, setStakeByMarket] = useState<Record<string, number>>({})
-  const [hoverChoice, setHoverChoice] = useState<{
-    marketId: string
-    choice: BetChoice
-  } | null>(null)
+  const [marketBets, setMarketBets] = useState<Record<string, MarketBet[]>>({})
 
   const loadData = useCallback(async () => {
     try {
@@ -63,7 +38,7 @@ export function MarketsSection() {
         .select('*')
         .order('created_at', { ascending: false })
 
-      const betsPromise = user
+      const userBetsPromise = user
         ? supabase
             .from('bets')
             .select('market_id, option, amount, shares')
@@ -78,7 +53,16 @@ export function MarketsSection() {
             error: null,
           })
 
-      const [marketsResult, betsResult] = await Promise.all([marketsPromise, betsPromise])
+      const historyBetsPromise = supabase
+        .from('bets')
+        .select('market_id, option, amount, created_at')
+        .order('created_at', { ascending: true })
+
+      const [marketsResult, betsResult, historyResult] = await Promise.all([
+        marketsPromise,
+        userBetsPromise,
+        historyBetsPromise,
+      ])
 
       if (marketsResult.error) {
         console.error('Failed to load markets:', marketsResult.error.message)
@@ -107,6 +91,27 @@ export function MarketsSection() {
         setUserPositions(grouped)
       } else {
         setUserPositions({})
+      }
+
+      if (historyResult.error) {
+        if (historyResult.error.code !== 'PGRST205') {
+          console.error('Failed to load bet history:', historyResult.error.message)
+        }
+        setMarketBets({})
+      } else if (historyResult.data) {
+        const grouped: Record<string, MarketBet[]> = {}
+        for (const bet of historyResult.data) {
+          const list = grouped[bet.market_id] ?? []
+          list.push({
+            option: String(bet.option || ''),
+            amount: Number(bet.amount),
+            created_at: bet.created_at,
+          })
+          grouped[bet.market_id] = list
+        }
+        setMarketBets(grouped)
+      } else {
+        setMarketBets({})
       }
     } catch (err) {
       console.error('Failed to load data:', err)
@@ -171,6 +176,7 @@ export function MarketsSection() {
         { choice, amount, shares },
       ],
     }))
+    setStakeByMarket((prev) => ({ ...prev, [marketId]: 0 }))
 
     await refreshProfile()
     setBettingMarketId(null)
@@ -195,7 +201,7 @@ export function MarketsSection() {
       {actionError && (
         <div
           role="alert"
-          className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300"
+          className="mb-4 rounded-xl border border-[var(--no)]/30 bg-[var(--no)]/10 px-3 py-2 text-sm text-[var(--no)]"
         >
           {actionError}
         </div>
@@ -208,8 +214,8 @@ export function MarketsSection() {
             onClick={() => setSelectedCategory(cat)}
             className={`rounded-full px-4 py-2 text-xs font-medium transition-colors ${
               selectedCategory === cat
-                ? 'bg-cyan-500 font-semibold text-black'
-                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                ? 'bg-primary font-semibold text-primary-foreground'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
             }`}
           >
             {cat}
@@ -218,225 +224,40 @@ export function MarketsSection() {
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-sm text-gray-400">Ladataan kohteita...</div>
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          Ladataan kohteita...
+        </div>
       ) : filteredMarkets.length === 0 ? (
-        <div className="py-12 text-center text-sm text-gray-400">
+        <div className="py-12 text-center text-sm text-muted-foreground">
           Ei kohteita tässä kategoriassa.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           {filteredMarkets.map((market) => {
             const yesPool = Number(market.yes_pool || 0)
             const noPool = Number(market.no_pool || 0)
-            const { yesPrice, noPrice } = getPrices(yesPool, noPool)
-            const yesPercent = Math.round(yesPrice * 100)
-            const noPercent = Math.round(noPrice * 100)
             const stake = getStake(market.id)
-            const positions = userPositions[market.id] ?? []
-            const isBetting = bettingMarketId === market.id
-
-            const yesQuote = quoteBuy(yesPool, noPool, 'YES', stake)
-            const noQuote = quoteBuy(yesPool, noPool, 'NO', stake)
-            const activeQuote =
-              hoverChoice?.marketId === market.id
-                ? hoverChoice.choice === 'YES'
-                  ? yesQuote
-                  : noQuote
-                : null
-
-            const totalSharesYes = positions
-              .filter((p) => p.choice === 'YES')
-              .reduce((sum, p) => sum + p.shares, 0)
-            const totalSharesNo = positions
-              .filter((p) => p.choice === 'NO')
-              .reduce((sum, p) => sum + p.shares, 0)
-            const totalSpent = positions.reduce((sum, p) => sum + p.amount, 0)
+            const priceHistory = buildPriceHistory(
+              market.created_at,
+              marketBets[market.id] ?? [],
+              yesPool,
+              noPool
+            )
 
             return (
-              <div
+              <MarketCard
                 key={market.id}
-                className="flex flex-col justify-between rounded-xl border border-gray-800 bg-[#161b22] p-5 transition-all hover:border-gray-700"
-              >
-                <div>
-                  <div className="mb-2 flex justify-between text-xs text-gray-400">
-                    <span className="font-semibold text-cyan-400">
-                      {market.category || 'Yleinen'}
-                    </span>
-                    <span>
-                      Päättyy{' '}
-                      {market.end_date
-                        ? new Date(market.end_date).toLocaleDateString('fi-FI')
-                        : 'Avoin'}
-                    </span>
-                  </div>
-
-                  <h3 className="mb-4 text-base leading-snug font-bold text-white">
-                    {market.title}
-                  </h3>
-
-                  <div className="mb-1 flex justify-between text-xs font-semibold">
-                    <span className="text-emerald-400">
-                      {formatPct(yesPrice)} KYLLÄ
-                    </span>
-                    <span className="text-rose-400">{formatPct(noPrice)} EI</span>
-                  </div>
-                  <div className="mb-3 flex h-2 w-full overflow-hidden rounded-full bg-gray-800">
-                    <div
-                      className="h-full bg-emerald-500 transition-all duration-300"
-                      style={{ width: `${yesPercent}%` }}
-                    />
-                    <div
-                      className="h-full bg-rose-500 transition-all duration-300"
-                      style={{ width: `${noPercent}%` }}
-                    />
-                  </div>
-                  <p className="mb-4 text-[11px] text-gray-500">
-                    Poolit: {Math.round(yesPool)} YES / {Math.round(noPool)} NO
-                  </p>
-                </div>
-
-                {positions.length > 0 && (
-                  <div className="mb-3 rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-2 text-xs text-gray-300">
-                    Positiosi:{' '}
-                    {totalSharesYes > 0 && (
-                      <span className="font-semibold text-emerald-400">
-                        {formatShares(totalSharesYes)} KYLLÄ
-                      </span>
-                    )}
-                    {totalSharesYes > 0 && totalSharesNo > 0 && ' · '}
-                    {totalSharesNo > 0 && (
-                      <span className="font-semibold text-rose-400">
-                        {formatShares(totalSharesNo)} EI
-                      </span>
-                    )}
-                    <span className="text-gray-500"> · käytetty {totalSpent} Fyrkkaa</span>
-                  </div>
-                )}
-
-                {!user ? (
-                  <button
-                    type="button"
-                    onClick={() => openAuth('login')}
-                    className="rounded-lg border border-cyan-500/30 px-3 py-2.5 text-xs font-bold text-cyan-300 transition-colors hover:bg-cyan-500/10"
-                  >
-                    Kirjaudu ostaaksesi osuuksia
-                  </button>
-                ) : (
-                  <div className="space-y-3">
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between text-[11px] text-gray-400">
-                        <span>Panos (Fyrkkaa)</span>
-                        <span>Saldo: {Math.round(balance)}</span>
-                      </div>
-                      <div className="flex gap-1.5">
-                        {STAKE_PRESETS.map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setStake(market.id, preset)}
-                            className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors ${
-                              stake === preset
-                                ? 'bg-cyan-500 text-black'
-                                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={stake}
-                        onChange={(e) =>
-                          setStake(market.id, Math.max(0, Number(e.target.value) || 0))
-                        }
-                        className="mt-2 h-9 w-full rounded-lg border border-gray-700 bg-gray-900 px-3 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                      />
-                    </div>
-
-                    {activeQuote && (
-                      <p className="text-[11px] text-gray-400">
-                        Saat ≈{' '}
-                        <span className="font-semibold text-white">
-                          {formatShares(activeQuote.shares)}
-                        </span>{' '}
-                        osuutta · keskihinta{' '}
-                        <span className="font-semibold text-white">
-                          {formatPct(activeQuote.avgPrice)}
-                        </span>
-                        {activeQuote.slippagePct > 0.05 && (
-                          <>
-                            {' '}
-                            · slippage{' '}
-                            <span className="text-amber-400">
-                              +{activeQuote.slippagePct.toFixed(1)}%
-                            </span>
-                          </>
-                        )}
-                      </p>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => handleBet(market.id, 'YES')}
-                        disabled={isBetting || stake <= 0 || stake > balance}
-                        onMouseEnter={() =>
-                          setHoverChoice({ marketId: market.id, choice: 'YES' })
-                        }
-                        onMouseLeave={() => setHoverChoice(null)}
-                        onFocus={() =>
-                          setHoverChoice({ marketId: market.id, choice: 'YES' })
-                        }
-                        onBlur={() => setHoverChoice(null)}
-                        className="rounded-lg border border-emerald-500/30 px-3 py-2.5 text-xs font-bold text-emerald-400 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isBetting ? (
-                          'Ostetaan...'
-                        ) : (
-                          <>
-                            Osta KYLLÄ
-                            <span className="mt-0.5 block font-medium opacity-80">
-                              {formatPct(yesPrice)}
-                              {yesQuote
-                                ? ` → ${formatShares(yesQuote.shares)} os.`
-                                : ''}
-                            </span>
-                          </>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleBet(market.id, 'NO')}
-                        disabled={isBetting || stake <= 0 || stake > balance}
-                        onMouseEnter={() =>
-                          setHoverChoice({ marketId: market.id, choice: 'NO' })
-                        }
-                        onMouseLeave={() => setHoverChoice(null)}
-                        onFocus={() =>
-                          setHoverChoice({ marketId: market.id, choice: 'NO' })
-                        }
-                        onBlur={() => setHoverChoice(null)}
-                        className="rounded-lg border border-rose-500/30 px-3 py-2.5 text-xs font-bold text-rose-400 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isBetting ? (
-                          'Ostetaan...'
-                        ) : (
-                          <>
-                            Osta EI
-                            <span className="mt-0.5 block font-medium opacity-80">
-                              {formatPct(noPrice)}
-                              {noQuote
-                                ? ` → ${formatShares(noQuote.shares)} os.`
-                                : ''}
-                            </span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                market={market}
+                priceHistory={priceHistory}
+                stake={stake}
+                balance={balance}
+                positions={userPositions[market.id] ?? []}
+                isBetting={bettingMarketId === market.id}
+                isLoggedIn={!!user}
+                onStakeChange={(value) => setStake(market.id, value)}
+                onBet={(choice) => handleBet(market.id, choice)}
+                onLogin={() => openAuth('login')}
+              />
             )
           })}
         </div>

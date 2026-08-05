@@ -130,3 +130,36 @@ export function formatShares(shares: number): string {
     maximumFractionDigits: 2,
   })
 }
+
+/**
+ * Spot pricing in "Fyrkkaa per share" (Polymarket-style cents):
+ *   63% → 63 F / share
+ *   shares = stake / pricePerShare
+ *   winning share pays 100 F
+ */
+export type FixedOddsQuote = {
+  pricePerShare: number
+  shares: number
+  payout: number
+  profit: number
+}
+
+export function quoteFixedOdds(
+  price01: number,
+  stake: number
+): FixedOddsQuote | null {
+  if (!(stake > 0)) return null
+  const pricePerShare = price01 * 100
+  if (!(pricePerShare > 0)) return null
+
+  const shares = stake / pricePerShare
+  const payout = shares * 100
+  const profit = payout - stake
+
+  return { pricePerShare, shares, payout, profit }
+}
+
+/** Convert AMM shares (1 share ≈ 1 F payout) to display shares (1 share ≈ 100 F payout). */
+export function toDisplayShares(ammShares: number): number {
+  return ammShares / 100
+}
