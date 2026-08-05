@@ -125,7 +125,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex max-h-[100dvh] items-end justify-center overflow-hidden sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[100] flex max-h-[100dvh] items-center justify-center overflow-hidden p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -137,7 +137,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="leaderboard-title"
-        className="relative z-10 flex max-h-[min(85dvh,100%)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl"
+        className="relative z-10 flex max-h-[min(85dvh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4 sm:px-5">
           <div className="flex min-w-0 items-center gap-2.5">
