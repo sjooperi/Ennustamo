@@ -1,23 +1,27 @@
 import { CommunitySidebar } from '@/components/community-sidebar'
+import { Hero } from '@/components/hero'
 import { MarketsSection } from '@/components/markets-section'
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
 
 export default function Page() {
   return (
-    <div className="min-h-screen bg-[#0d1117] text-white">
+    <div className="min-h-screen">
       <SiteHeader />
       <main>
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <Hero />
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
             <div>
-              <div className="mb-6">
-                <h2 className="text-xl font-bold tracking-tight text-white">
-                  Markkinat
-                </h2>
-                <p className="mt-1 text-sm text-gray-400">
-                  Valitse kohde ja tee ennustuksesi.
-                </p>
+              <div className="mb-6 flex items-end justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight">
+                    Markkinat
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Valitse kohde ja tee ennustuksesi.
+                  </p>
+                </div>
               </div>
               <MarketsSection />
             </div>

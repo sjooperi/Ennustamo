@@ -1,26 +1,86 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-yes: var(--yes);
+  --color-yes-foreground: var(--yes-foreground);
+  --color-no: var(--no);
+  --color-no-foreground: var(--no-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  color-scheme: dark;
+
+  /* Neutrals — zinc / slate dark palette */
+  --background: oklch(0.16 0.008 265);
+  --foreground: oklch(0.97 0.005 260);
+  --card: oklch(0.205 0.012 265);
+  --card-foreground: oklch(0.97 0.005 260);
+  --popover: oklch(0.205 0.012 265);
+  --popover-foreground: oklch(0.97 0.005 260);
+
+  /* Brand — cyan / indigo */
+  --primary: oklch(0.72 0.14 200);
+  --primary-foreground: oklch(0.16 0.02 250);
+  --brand: oklch(0.72 0.14 200);
+  --brand-foreground: oklch(0.16 0.02 250);
+
+  --secondary: oklch(0.27 0.015 265);
+  --secondary-foreground: oklch(0.97 0.005 260);
+  --muted: oklch(0.27 0.015 265);
+  --muted-foreground: oklch(0.7 0.015 265);
+  --accent: oklch(0.27 0.02 260);
+  --accent-foreground: oklch(0.97 0.005 260);
+  --destructive: oklch(0.62 0.21 20);
+
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.72 0.14 200);
+
+  /* Semantic YES / NO */
+  --yes: oklch(0.7 0.16 160);
+  --yes-foreground: oklch(0.16 0.02 160);
+  --no: oklch(0.64 0.2 18);
+  --no-foreground: oklch(0.98 0.01 18);
+
+  --radius: 0.875rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    @apply bg-background text-foreground;
+  }
 }
