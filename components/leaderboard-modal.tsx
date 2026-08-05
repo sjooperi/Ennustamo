@@ -29,6 +29,15 @@ const RANK_STYLES = [
   'bg-[oklch(0.65_0.11_50)] text-[oklch(0.2_0.05_50)]',
 ]
 
+type ProfileLeaderboardSource = {
+  id: string
+  display_name?: string | null
+  username?: string | null
+  email?: string | null
+  balance?: number | string | null
+  fyrkat?: number | string | null
+}
+
 async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
   const primary = await supabase
     .from('profiles')
@@ -36,7 +45,7 @@ async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
     .order('balance', { ascending: false })
     .limit(50)
 
-  let rows = primary.data
+  let rows: ProfileLeaderboardSource[] | null = primary.data
 
   if (primary.error) {
     const fallback = await supabase
@@ -49,7 +58,14 @@ async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
       console.error('Failed to load leaderboard:', primary.error.message)
       return []
     }
-    rows = fallback.data
+    rows = (fallback.data ?? []).map((row) => ({
+      id: row.id,
+      username: row.username,
+      balance: row.balance,
+      fyrkat: row.fyrkat,
+      display_name: null,
+      email: null,
+    }))
   }
 
   if (!rows) return []
@@ -63,7 +79,7 @@ async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
         email: typeof row.email === 'string' ? row.email : null,
       })
       return {
-        id: row.id as string,
+        id: row.id,
         name,
         initials: initialsFromPublicName(name),
         balance,
