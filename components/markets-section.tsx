@@ -1,10 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { useAuth } from '@/lib/auth-context'
 import {
   applyMarketChange,
   isOpenMarketStatus,
+  readMarketStatus,
   type MarketRow,
 } from '@/lib/market-realtime'
 import { buildPriceHistory, type MarketBet } from '@/lib/price-history'
@@ -163,16 +165,18 @@ export function MarketsSection() {
 
     const channel = supabase
       .channel('public-markets-live')
-      .on(
+      .on<MarketRow>(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'markets' },
-        (payload) => {
-          const wasOpen = isOpenMarketStatus(
-            (payload.old as MarketRow | undefined)?.status
-          )
-          const isOpen = isOpenMarketStatus(
-            (payload.new as MarketRow | undefined)?.status
-          )
+        (payload: RealtimePostgresChangesPayload<MarketRow>) => {
+          const wasOpen =
+            payload.eventType === 'INSERT'
+              ? false
+              : isOpenMarketStatus(readMarketStatus(payload.old))
+          const isOpen =
+            payload.eventType === 'DELETE'
+              ? false
+              : isOpenMarketStatus(readMarketStatus(payload.new))
 
           setMarkets((prev) => applyMarketChange(prev, payload, toLiveMarket))
 
