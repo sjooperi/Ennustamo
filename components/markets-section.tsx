@@ -2,17 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { parseMarketOptions, parseOptionPools } from '@/lib/amm'
 import {
   applyMarketChange,
   isOpenMarketStatus,
   readMarketStatus,
   type MarketRow,
 } from '@/lib/market-realtime'
-import { buildPriceHistory, type MarketBet } from '@/lib/price-history'
+import {
+  buildPriceHistoryForMarket,
+  chartSeriesForOptions,
+  type MarketBet,
+} from '@/lib/price-history'
 import { supabase } from '@/lib/supabase'
 import { MarketCard, type LiveMarket, type UserPosition } from '@/components/market-card'
-
-type BetChoice = 'YES' | 'NO'
 
 const DEFAULT_STAKE = 0
 
@@ -28,6 +31,18 @@ function translateBetError(message: string): string {
 }
 
 function toLiveMarket(row: MarketRow): LiveMarket & { created_at?: string } {
+  const options = parseMarketOptions(row.options)
+  const optionPools = parseOptionPools(row.option_pools)
+  // Keep binary pools in sync for display when option_pools missing
+  if (
+    options.length === 2 &&
+    Object.keys(optionPools).length === 0 &&
+    (row.yes_pool != null || row.no_pool != null)
+  ) {
+    optionPools.YES = Number(row.yes_pool || 0)
+    optionPools.NO = Number(row.no_pool || 0)
+  }
+
   return {
     id: row.id,
     title: String(row.title || ''),
@@ -36,6 +51,8 @@ function toLiveMarket(row: MarketRow): LiveMarket & { created_at?: string } {
     yes_pool: Number(row.yes_pool || 0),
     no_pool: Number(row.no_pool || 0),
     status: row.status ?? null,
+    options,
+    option_pools: optionPools,
     created_at: row.created_at ? String(row.created_at) : undefined,
   }
 }
@@ -93,13 +110,17 @@ export function MarketsSection() {
             .from('markets')
             .select('*')
             .order('created_at', { ascending: false })
-          if (fallback.data) setMarkets(fallback.data)
+          if (fallback.data) {
+            setMarkets(fallback.data.map((m) => toLiveMarket(m as MarketRow)))
+          }
         } else {
           console.error('Failed to load markets:', marketsResult.error.message)
         }
       } else if (marketsResult.data) {
         setMarkets(
-          marketsResult.data.filter((m) => isOpenMarketStatus(m.status))
+          marketsResult.data
+            .filter((m) => isOpenMarketStatus(m.status))
+            .map((m) => toLiveMarket(m as MarketRow))
         )
       }
 
@@ -111,8 +132,7 @@ export function MarketsSection() {
       } else if (betsResult.data) {
         const grouped: Record<string, UserPosition[]> = {}
         for (const bet of betsResult.data) {
-          const raw = String(bet.option || '').toUpperCase()
-          const choice: BetChoice = raw === 'NO' ? 'NO' : 'YES'
+          const choice = String(bet.option || '').toUpperCase() || 'YES'
           const list = grouped[bet.market_id] ?? []
           list.push({
             choice,
@@ -230,7 +250,7 @@ export function MarketsSection() {
     setStakeByMarket((prev) => ({ ...prev, [marketId]: value }))
   }
 
-  const handleBet = async (marketId: string, choice: BetChoice) => {
+  const handleBet = async (marketId: string, choice: string) => {
     setActionError(null)
 
     if (!user) {
@@ -255,7 +275,7 @@ export function MarketsSection() {
 
     const { data, error } = await supabase.rpc('place_bet', {
       p_market_id: marketId,
-      p_choice: choice,
+      p_choice: choice.toUpperCase(),
       p_amount: amount,
     })
 
@@ -270,7 +290,7 @@ export function MarketsSection() {
       ...prev,
       [marketId]: [
         ...(prev[marketId] ?? []),
-        { choice, amount, shares },
+        { choice: choice.toUpperCase(), amount, shares },
       ],
     }))
     setStakeByMarket((prev) => ({ ...prev, [marketId]: 0 }))
@@ -334,18 +354,26 @@ export function MarketsSection() {
             const yesPool = Number(market.yes_pool || 0)
             const noPool = Number(market.no_pool || 0)
             const stake = getStake(market.id)
-            const priceHistory = buildPriceHistory(
-              market.created_at,
-              marketBets[market.id] ?? [],
+            const options = market.options ?? [
+              { key: 'YES', label: 'Kyllä' },
+              { key: 'NO', label: 'Ei' },
+            ]
+            const priceHistory = buildPriceHistoryForMarket({
+              marketCreatedAt: market.created_at,
+              options,
+              bets: marketBets[market.id] ?? [],
               yesPool,
-              noPool
-            )
+              noPool,
+              optionPools: market.option_pools,
+            })
+            const chartSeries = chartSeriesForOptions(options)
 
             return (
               <MarketCard
                 key={market.id}
                 market={market}
                 priceHistory={priceHistory}
+                chartSeries={chartSeries}
                 stake={stake}
                 balance={balance}
                 positions={userPositions[market.id] ?? []}

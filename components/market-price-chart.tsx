@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import type { PricePoint } from '@/lib/price-history'
+import type { ChartSeries, PricePoint } from '@/lib/price-history'
 
 type MarketPriceChartProps = {
   points: PricePoint[]
+  series: ChartSeries[]
   className?: string
 }
 
@@ -26,15 +27,32 @@ function formatAxisTime(date: Date): string {
   })
 }
 
-function buildLinePath(
-  coords: { x: number; y: number }[]
-): string {
+function buildLinePath(coords: { x: number; y: number }[]): string {
   return coords
     .map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(2)} ${c.y.toFixed(2)}`)
     .join(' ')
 }
 
-export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
+function strokeClass(colorClass: string): string {
+  const match = colorClass.match(/stroke-\[[^\]]+\]|stroke-[\w-]+/)
+  return match?.[0] ?? 'stroke-primary'
+}
+
+function fillClass(colorClass: string): string {
+  const match = colorClass.match(/fill-\[[^\]]+\]|fill-[\w-]+/)
+  return match?.[0] ?? 'fill-primary'
+}
+
+function textClass(colorClass: string): string {
+  const match = colorClass.match(/text-\[[^\]]+\]|text-[\w-]+/)
+  return match?.[0] ?? 'text-primary'
+}
+
+export function MarketPriceChart({
+  points,
+  series,
+  className,
+}: MarketPriceChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
   const chart = useMemo(() => {
@@ -42,17 +60,31 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
     const innerHeight = CHART_HEIGHT - PADDING.top - PADDING.bottom
 
     const priceToY = (price: number) =>
-      PADDING.top + innerHeight - price * innerHeight
+      PADDING.top + innerHeight - Math.min(1, Math.max(0, price)) * innerHeight
 
-    if (points.length < 2) {
-      const yesPrice = points[0]?.yesPrice ?? 0.5
-      const noPrice = 1 - yesPrice
-      const x = PADDING.left + innerWidth / 2
+    const safeSeries =
+      series.length > 0
+        ? series
+        : [
+            {
+              key: 'YES',
+              label: 'Kyllä',
+              colorClass: 'stroke-[var(--yes)] fill-[var(--yes)] text-[var(--yes)]',
+            },
+            {
+              key: 'NO',
+              label: 'Ei',
+              colorClass: 'stroke-[var(--no)] fill-[var(--no)] text-[var(--no)]',
+            },
+          ]
+
+    if (points.length < 1) {
       return {
-        yesCoords: [{ x, y: priceToY(yesPrice), price: yesPrice }],
-        noCoords: [{ x, y: priceToY(noPrice), price: noPrice }],
-        yesLinePath: '',
-        noLinePath: '',
+        seriesPaths: safeSeries.map((s) => ({
+          ...s,
+          coords: [] as { x: number; y: number; price: number }[],
+          path: '',
+        })),
         minTime: Date.now(),
         maxTime: Date.now(),
       }
@@ -62,55 +94,41 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
     const maxTime = points[points.length - 1].timestamp.getTime()
     const timeSpan = Math.max(maxTime - minTime, 1)
 
-    const yesCoords = points.map((point) => {
-      const x =
-        PADDING.left +
-        ((point.timestamp.getTime() - minTime) / timeSpan) * innerWidth
+    const seriesPaths = safeSeries.map((s) => {
+      const coords = points.map((point) => {
+        const price =
+          point.prices?.[s.key] ??
+          (s.key === 'YES'
+            ? point.yesPrice
+            : s.key === 'NO'
+              ? 1 - point.yesPrice
+              : 0)
+        const x =
+          points.length === 1
+            ? PADDING.left + innerWidth / 2
+            : PADDING.left +
+              ((point.timestamp.getTime() - minTime) / timeSpan) * innerWidth
+        return { x, y: priceToY(price), price }
+      })
       return {
-        x,
-        y: priceToY(point.yesPrice),
-        price: point.yesPrice,
+        ...s,
+        coords,
+        path: coords.length >= 2 ? buildLinePath(coords) : '',
       }
     })
 
-    const noCoords = points.map((point) => {
-      const noPrice = 1 - point.yesPrice
-      const x =
-        PADDING.left +
-        ((point.timestamp.getTime() - minTime) / timeSpan) * innerWidth
-      return {
-        x,
-        y: priceToY(noPrice),
-        price: noPrice,
-      }
-    })
+    return { seriesPaths, minTime, maxTime }
+  }, [points, series])
 
-    return {
-      yesCoords,
-      noCoords,
-      yesLinePath: buildLinePath(yesCoords),
-      noLinePath: buildLinePath(noCoords),
-      minTime,
-      maxTime,
-    }
-  }, [points])
-
-  const activeIndex = hoverIndex ?? points.length - 1
-  const activeYes = chart.yesCoords[activeIndex] ?? chart.yesCoords[chart.yesCoords.length - 1]
-  const activeNo = chart.noCoords[activeIndex] ?? chart.noCoords[chart.noCoords.length - 1]
-  const lastYes = chart.yesCoords[chart.yesCoords.length - 1]
-  const lastNo = chart.noCoords[chart.noCoords.length - 1]
-
-  const displayYes = hoverIndex !== null ? activeYes : lastYes
-  const displayNo = hoverIndex !== null ? activeNo : lastNo
+  const activeIndex = hoverIndex ?? Math.max(0, points.length - 1)
 
   const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
     const x = ((event.clientX - rect.left) / rect.width) * CHART_WIDTH
-
+    const refCoords = chart.seriesPaths[0]?.coords ?? []
     let closest = 0
     let closestDist = Infinity
-    chart.yesCoords.forEach((coord, index) => {
+    refCoords.forEach((coord, index) => {
       const dist = Math.abs(coord.x - x)
       if (dist < closestDist) {
         closestDist = dist
@@ -123,6 +141,8 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
   const innerHeight = CHART_HEIGHT - PADDING.top - PADDING.bottom
   const priceToY = (price: number) =>
     PADDING.top + innerHeight - price * innerHeight
+
+  const sidebarSeries = chart.seriesPaths.slice(0, 4)
 
   return (
     <div
@@ -163,32 +183,24 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
               )
             })}
 
-            {chart.noLinePath && (
-              <path
-                d={chart.noLinePath}
-                fill="none"
-                className="stroke-[var(--no)]"
-                strokeWidth="2"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
+            {chart.seriesPaths.map((s) =>
+              s.path ? (
+                <path
+                  key={s.key}
+                  d={s.path}
+                  fill="none"
+                  className={strokeClass(s.colorClass)}
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ) : null
             )}
 
-            {chart.yesLinePath && (
-              <path
-                d={chart.yesLinePath}
-                fill="none"
-                className="stroke-[var(--yes)]"
-                strokeWidth="2"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-            )}
-
-            {hoverIndex !== null && displayYes && (
+            {hoverIndex !== null && chart.seriesPaths[0]?.coords[activeIndex] && (
               <line
-                x1={displayYes.x}
-                x2={displayYes.x}
+                x1={chart.seriesPaths[0].coords[activeIndex].x}
+                x2={chart.seriesPaths[0].coords[activeIndex].x}
                 y1={PADDING.top}
                 y2={CHART_HEIGHT - PADDING.bottom}
                 className="stroke-muted-foreground/30"
@@ -197,25 +209,21 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
               />
             )}
 
-            {displayYes && (
-              <circle
-                cx={displayYes.x}
-                cy={displayYes.y}
-                r="3.5"
-                className="fill-[var(--yes)] stroke-card"
-                strokeWidth="2"
-              />
-            )}
-
-            {displayNo && (
-              <circle
-                cx={displayNo.x}
-                cy={displayNo.y}
-                r="3.5"
-                className="fill-[var(--no)] stroke-card"
-                strokeWidth="2"
-              />
-            )}
+            {chart.seriesPaths.map((s) => {
+              const coord =
+                s.coords[activeIndex] ?? s.coords[s.coords.length - 1]
+              if (!coord) return null
+              return (
+                <circle
+                  key={`dot-${s.key}`}
+                  cx={coord.x}
+                  cy={coord.y}
+                  r="3.5"
+                  className={`${fillClass(s.colorClass)} stroke-card`}
+                  strokeWidth="2"
+                />
+              )
+            })}
 
             <text
               x={PADDING.left}
@@ -237,21 +245,25 @@ export function MarketPriceChart({ points, className }: MarketPriceChartProps) {
           </svg>
         </div>
 
-        <div className="flex w-12 shrink-0 flex-col justify-between py-1 sm:w-16">
-          <div className="text-right">
-            <p className="text-[9px] font-medium text-[var(--yes)] sm:text-[10px]">
-              KYLLÄ
-            </p>
-            <p className="text-sm font-bold tabular-nums leading-tight text-[var(--yes)] sm:text-lg">
-              {formatChartPct(displayYes?.price ?? 0.5)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] font-medium text-[var(--no)] sm:text-[10px]">EI</p>
-            <p className="text-sm font-bold tabular-nums leading-tight text-[var(--no)] sm:text-lg">
-              {formatChartPct(displayNo?.price ?? 0.5)}
-            </p>
-          </div>
+        <div className="flex w-16 shrink-0 flex-col justify-center gap-2 py-1 sm:w-[4.5rem]">
+          {sidebarSeries.map((s) => {
+            const coord =
+              s.coords[activeIndex] ?? s.coords[s.coords.length - 1]
+            return (
+              <div key={s.key} className="text-right">
+                <p
+                  className={`truncate text-[9px] font-semibold sm:text-[10px] ${textClass(s.colorClass)}`}
+                >
+                  {s.label}
+                </p>
+                <p
+                  className={`font-bold tabular-nums leading-tight sm:text-sm ${textClass(s.colorClass)}`}
+                >
+                  {formatChartPct(coord?.price ?? 0)}
+                </p>
+              </div>
+            )
+          })}
         </div>
       </div>
 

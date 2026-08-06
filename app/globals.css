@@ -67,11 +67,11 @@
   --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.72 0.14 200);
 
-  /* Semantic YES / NO */
-  --yes: oklch(0.7 0.16 160);
-  --yes-foreground: oklch(0.16 0.02 160);
-  --no: oklch(0.64 0.2 18);
-  --no-foreground: oklch(0.98 0.01 18);
+  /* Semantic YES / NO — NO kept light for contrast on dark UI */
+  --yes: oklch(0.72 0.17 155);
+  --yes-foreground: oklch(0.16 0.02 155);
+  --no: oklch(0.86 0.14 32);
+  --no-foreground: oklch(0.22 0.04 28);
 
   --radius: 0.875rem;
 }

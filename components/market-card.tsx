@@ -2,11 +2,18 @@
 
 import { useState } from 'react'
 import { LineChart, X } from 'lucide-react'
-import { formatPct, formatShares, getPrices, quoteFixedOdds, toDisplayShares } from '@/lib/amm'
-import { getPriceChange, type PricePoint } from '@/lib/price-history'
+import {
+  formatPct,
+  formatShares,
+  getOptionPrices,
+  getPrices,
+  isBinaryMarket,
+  quoteFixedOdds,
+  toDisplayShares,
+  type MarketOptionDef,
+} from '@/lib/amm'
+import { getPriceChange, type ChartSeries, type PricePoint } from '@/lib/price-history'
 import { MarketPriceChart } from '@/components/market-price-chart'
-
-type BetChoice = 'YES' | 'NO'
 
 export type LiveMarket = {
   id: string
@@ -17,32 +24,75 @@ export type LiveMarket = {
   no_pool: number
   status?: string | null
   winning_option?: string | null
+  options?: MarketOptionDef[]
+  option_pools?: Record<string, number>
 }
 
 export type UserPosition = {
-  choice: BetChoice
+  choice: string
   amount: number
   shares: number
 }
 
 const STAKE_PRESETS = [10, 25, 50, 100]
 
+const OPTION_STYLES = [
+  {
+    text: 'text-[var(--yes)]',
+    bg: 'bg-[var(--yes)]',
+    soft: 'bg-[var(--yes)]/18',
+    ring: 'ring-[var(--yes)]',
+    softRing: 'ring-[var(--yes)]/35',
+    fg: 'text-[var(--yes-foreground)]',
+  },
+  {
+    text: 'text-[var(--no)]',
+    bg: 'bg-[var(--no)]',
+    soft: 'bg-[var(--no)]/28',
+    ring: 'ring-[var(--no)]',
+    softRing: 'ring-[var(--no)]/55',
+    fg: 'text-[var(--no-foreground)]',
+  },
+  {
+    text: 'text-primary',
+    bg: 'bg-primary',
+    soft: 'bg-primary/12',
+    ring: 'ring-primary',
+    softRing: 'ring-primary/25',
+    fg: 'text-primary-foreground',
+  },
+  {
+    text: 'text-foreground',
+    bg: 'bg-foreground',
+    soft: 'bg-secondary',
+    ring: 'ring-foreground',
+    softRing: 'ring-border',
+    fg: 'text-background',
+  },
+]
+
+function optionStyle(index: number) {
+  return OPTION_STYLES[index % OPTION_STYLES.length]
+}
+
 export type MarketCardProps = {
   market: LiveMarket
   priceHistory: PricePoint[]
+  chartSeries: ChartSeries[]
   stake: number
   balance: number
   positions: UserPosition[]
   isBetting: boolean
   isLoggedIn: boolean
   onStakeChange: (value: number) => void
-  onBet: (choice: BetChoice) => void
+  onBet: (choice: string) => void
   onLogin: () => void
 }
 
 export function MarketCard({
   market,
   priceHistory,
+  chartSeries,
   stake,
   balance,
   positions,
@@ -52,46 +102,69 @@ export function MarketCard({
   onBet,
   onLogin,
 }: MarketCardProps) {
-  const [showChart, setShowChart] = useState(false)
-  const [pendingChoice, setPendingChoice] = useState<BetChoice | null>(null)
+  const [showChart, setShowChart] = useState(true)
+  const [pendingChoice, setPendingChoice] = useState<string | null>(null)
 
+  const options: MarketOptionDef[] =
+    market.options && market.options.length >= 2
+      ? market.options.map((o) => ({
+          key: o.key.toUpperCase(),
+          label: o.label,
+        }))
+      : [
+          { key: 'YES', label: 'Kyllä' },
+          { key: 'NO', label: 'Ei' },
+        ]
+
+  const binary = isBinaryMarket(options)
   const yesPool = Number(market.yes_pool || 0)
   const noPool = Number(market.no_pool || 0)
-  const { yesPrice, noPrice } = getPrices(yesPool, noPool)
-  const yesPercent = Math.round(yesPrice * 100)
-  const noPercent = Math.round(noPrice * 100)
+  const binaryPrices = getPrices(yesPool, noPool)
+  const multiPrices = getOptionPrices(options, market.option_pools)
+
+  const prices: Record<string, number> = binary
+    ? { YES: binaryPrices.yesPrice, NO: binaryPrices.noPrice }
+    : multiPrices
+
   const { deltaPct, direction } = getPriceChange(priceHistory)
+  const leading = [...options].sort(
+    (a, b) => (prices[b.key] ?? 0) - (prices[a.key] ?? 0)
+  )[0]
+  const leadingPct = Math.round((prices[leading?.key] ?? 0) * 100)
 
-  const spentYes = positions
-    .filter((p) => p.choice === 'YES')
-    .reduce((sum, p) => sum + p.amount, 0)
-  const spentNo = positions
-    .filter((p) => p.choice === 'NO')
-    .reduce((sum, p) => sum + p.amount, 0)
-  const sharesYes = positions
-    .filter((p) => p.choice === 'YES')
-    .reduce((sum, p) => sum + p.shares, 0)
-  const sharesNo = positions
-    .filter((p) => p.choice === 'NO')
-    .reduce((sum, p) => sum + p.shares, 0)
+  const spentByChoice = (key: string) =>
+    positions
+      .filter((p) => p.choice.toUpperCase() === key.toUpperCase())
+      .reduce((sum, p) => sum + p.amount, 0)
 
-  const currentPosition =
-    pendingChoice === 'YES' ? spentYes : pendingChoice === 'NO' ? spentNo : 0
+  const sharesByChoice = (key: string) =>
+    positions
+      .filter((p) => p.choice.toUpperCase() === key.toUpperCase())
+      .reduce((sum, p) => sum + p.shares, 0)
+
+  const currentPosition = pendingChoice ? spentByChoice(pendingChoice) : 0
   const currentSharesDisplay = toDisplayShares(
-    pendingChoice === 'YES' ? sharesYes : pendingChoice === 'NO' ? sharesNo : 0
+    pendingChoice ? sharesByChoice(pendingChoice) : 0
   )
-  // Draft pot: accumulates with each preset click (50 + 50 = 100), confirmed separately.
   const draftPot = stake
   const canAfford = draftPot > 0 && draftPot <= balance
   const projectedPosition = currentPosition + (canAfford ? draftPot : 0)
   const balanceAfter = canAfford ? balance - draftPot : balance
 
-  const spotPrice = pendingChoice === 'YES' ? yesPrice : pendingChoice === 'NO' ? noPrice : 0
+  const spotPrice = pendingChoice ? prices[pendingChoice.toUpperCase()] ?? 0 : 0
   const oddsQuote = pendingChoice ? quoteFixedOdds(spotPrice, draftPot) : null
+  const pendingLabel =
+    options.find((o) => o.key === pendingChoice)?.label ?? pendingChoice ?? ''
+  const pendingStyle = optionStyle(
+    Math.max(
+      0,
+      options.findIndex((o) => o.key === pendingChoice)
+    )
+  )
 
   const stakePanelOpen = pendingChoice !== null
+  const hasPositions = positions.some((p) => p.amount > 0)
 
-  /** Add delta to the draft pot (capped by balance). Does not place a bet. */
   const accumulateToPot = (delta: number) => {
     if (!(delta > 0)) return
     const next = Math.min(Math.floor(balance), draftPot + delta)
@@ -102,18 +175,18 @@ export function MarketCard({
     onStakeChange(Math.max(0, Math.min(Math.floor(balance), value)))
   }
 
-  const openStakePanel = (choice: BetChoice) => {
+  const openStakePanel = (choice: string) => {
     if (!isLoggedIn) {
       onLogin()
       return
     }
-    if (pendingChoice === choice) {
+    const key = choice.toUpperCase()
+    if (pendingChoice === key) {
       setPendingChoice(null)
       return
     }
-    // Start a fresh accumulating pot when opening / switching side.
     onStakeChange(0)
-    setPendingChoice(choice)
+    setPendingChoice(key)
   }
 
   const handleConfirmPot = () => {
@@ -154,85 +227,123 @@ export function MarketCard({
         {market.title}
       </h3>
 
-      <div className="mt-2">
-        <div className="mb-1 flex items-center justify-between text-[11px] font-semibold">
-          <span className="inline-flex items-center gap-1 text-[var(--yes)]">
-            <span className="tabular-nums text-sm font-bold">{yesPercent}%</span>
-            KYLLÄ
-            {deltaPct !== 0 && (
-              <span className="font-medium opacity-70">
-                {direction === 'up' ? '▲' : '▼'}
-                {Math.abs(deltaPct)}%
+      {binary ? (
+        <div className="mt-2">
+          <div className="mb-1 grid grid-cols-2 items-center gap-2 text-[11px] font-semibold">
+            <span className="inline-flex min-w-0 items-center gap-1.5 text-[var(--yes)]">
+              <span className="tabular-nums text-sm font-bold">
+                {Math.round((prices.YES ?? 0) * 100)}%
               </span>
-            )}
-          </span>
-          <span className="inline-flex items-center gap-1 text-[var(--no)]">
-            EI
-            <span className="tabular-nums text-sm font-bold">{noPercent}%</span>
-          </span>
+              <span className="truncate">
+                {options.find((o) => o.key === 'YES')?.label ?? 'Kyllä'}
+              </span>
+              {deltaPct !== 0 && (
+                <span className="shrink-0 font-medium opacity-80">
+                  {direction === 'up' ? '▲' : '▼'}
+                  {Math.abs(deltaPct)}%
+                </span>
+              )}
+            </span>
+            <span className="inline-flex min-w-0 items-center justify-end gap-1.5 text-[var(--no)]">
+              <span className="tabular-nums text-sm font-bold">
+                {Math.round((prices.NO ?? 0) * 100)}%
+              </span>
+              <span className="truncate">
+                {options.find((o) => o.key === 'NO')?.label ?? 'Ei'}
+              </span>
+            </span>
+          </div>
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full bg-[var(--yes)] transition-all duration-500"
+              style={{ width: `${Math.round((prices.YES ?? 0) * 100)}%` }}
+            />
+            <div
+              className="h-full bg-[var(--no)] transition-all duration-500"
+              style={{ width: `${Math.round((prices.NO ?? 0) * 100)}%` }}
+            />
+          </div>
         </div>
-        <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-          <div
-            className="h-full bg-[var(--yes)] transition-all duration-500"
-            style={{ width: `${yesPercent}%` }}
-          />
-          <div
-            className="h-full bg-[var(--no)] transition-all duration-500"
-            style={{ width: `${noPercent}%` }}
-          />
+      ) : (
+        <div className="mt-2 space-y-1.5">
+          <p className="text-[11px] text-muted-foreground">
+            Suosikki:{' '}
+            <span className="font-semibold text-foreground">
+              {leading?.label} {leadingPct}%
+            </span>
+          </p>
+          <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+            {options.map((opt, index) => {
+              const pct = Math.round((prices[opt.key] ?? 0) * 100)
+              const style = optionStyle(index)
+              return (
+                <div
+                  key={opt.key}
+                  className={`h-full ${style.bg} transition-all duration-500`}
+                  style={{ width: `${pct}%` }}
+                  title={`${opt.label} ${pct}%`}
+                />
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
-      {showChart && <MarketPriceChart points={priceHistory} className="mt-2" />}
+      {showChart && (
+        <MarketPriceChart
+          points={priceHistory}
+          series={chartSeries}
+          className="mt-2"
+        />
+      )}
 
-      {(spentYes > 0 || spentNo > 0) && (
-        <p className="mt-2 truncate text-[11px] text-muted-foreground">
+      {hasPositions && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
           Positiosi:{' '}
-          {spentYes > 0 && (
-            <span className="font-semibold text-[var(--yes)]">
-              {spentYes} Fyrkkaa KYLLÄ
-              {sharesYes > 0
-                ? ` (${formatShares(toDisplayShares(sharesYes))} os.)`
-                : ''}
-            </span>
-          )}
-          {spentYes > 0 && spentNo > 0 && ' · '}
-          {spentNo > 0 && (
-            <span className="font-semibold text-[var(--no)]">
-              {spentNo} Fyrkkaa EI
-              {sharesNo > 0
-                ? ` (${formatShares(toDisplayShares(sharesNo))} os.)`
-                : ''}
-            </span>
-          )}
+          {options
+            .map((opt) => {
+              const spent = spentByChoice(opt.key)
+              const shares = sharesByChoice(opt.key)
+              if (!(spent > 0)) return null
+              return (
+                <span key={opt.key} className="mr-2 font-semibold text-foreground">
+                  {spent} F {opt.label}
+                  {shares > 0
+                    ? ` (${formatShares(toDisplayShares(shares))} os.)`
+                    : ''}
+                </span>
+              )
+            })
+            .filter(Boolean)}
         </p>
       )}
 
-      <div className="mt-2 grid w-full max-w-full grid-cols-2 gap-1.5">
-        <button
-          type="button"
-          onClick={() => openStakePanel('YES')}
-          aria-pressed={pendingChoice === 'YES'}
-          className={`inline-flex h-8 min-w-0 items-center justify-center truncate rounded-lg px-1 text-xs font-semibold ring-1 ring-inset transition-all ${
-            pendingChoice === 'YES'
-              ? 'bg-[var(--yes)] text-[var(--yes-foreground)] ring-[var(--yes)]'
-              : 'bg-[var(--yes)]/12 text-[var(--yes)] ring-[var(--yes)]/25 hover:bg-[var(--yes)] hover:text-[var(--yes-foreground)]'
-          }`}
-        >
-          KYLLÄ {formatPct(yesPrice)}
-        </button>
-        <button
-          type="button"
-          onClick={() => openStakePanel('NO')}
-          aria-pressed={pendingChoice === 'NO'}
-          className={`inline-flex h-8 min-w-0 items-center justify-center truncate rounded-lg px-1 text-xs font-semibold ring-1 ring-inset transition-all ${
-            pendingChoice === 'NO'
-              ? 'bg-[var(--no)] text-[var(--no-foreground)] ring-[var(--no)]'
-              : 'bg-[var(--no)]/12 text-[var(--no)] ring-[var(--no)]/25 hover:bg-[var(--no)] hover:text-[var(--no-foreground)]'
-          }`}
-        >
-          EI {formatPct(noPrice)}
-        </button>
+      <div
+        className={`mt-2 grid w-full max-w-full gap-1.5 ${
+          options.length <= 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'
+        }`}
+      >
+        {options.map((opt, index) => {
+          const style = optionStyle(index)
+          const selected = pendingChoice === opt.key
+          const price = prices[opt.key] ?? 0
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => openStakePanel(opt.key)}
+              aria-pressed={selected}
+              className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 truncate rounded-lg px-2 text-xs font-semibold ring-1 ring-inset transition-all ${
+                selected
+                  ? `${style.bg} ${style.fg} ${style.ring}`
+                  : `${style.soft} ${style.text} ${style.softRing} hover:brightness-110`
+              }`}
+            >
+              <span className="tabular-nums">{formatPct(price)}</span>
+              <span className="truncate">{opt.label}</span>
+            </button>
+          )
+        })}
       </div>
 
       {stakePanelOpen && pendingChoice && (
@@ -240,13 +351,7 @@ export function MarketCard({
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] font-semibold text-foreground">
               Lisää panosta{' '}
-              <span
-                className={
-                  pendingChoice === 'YES' ? 'text-[var(--yes)]' : 'text-[var(--no)]'
-                }
-              >
-                {pendingChoice === 'YES' ? 'KYLLÄ' : 'EI'}
-              </span>
+              <span className={pendingStyle.text}>{pendingLabel}</span>
             </p>
             <button
               type="button"
@@ -261,11 +366,7 @@ export function MarketCard({
           <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
             <p className="text-muted-foreground">
               Positio:{' '}
-              <span
-                className={`font-semibold tabular-nums ${
-                  pendingChoice === 'YES' ? 'text-[var(--yes)]' : 'text-[var(--no)]'
-                }`}
-              >
+              <span className={`font-semibold tabular-nums ${pendingStyle.text}`}>
                 {currentPosition.toLocaleString('fi-FI')} F
               </span>
               {currentSharesDisplay > 0 && (
@@ -391,17 +492,11 @@ export function MarketCard({
             type="button"
             onClick={handleConfirmPot}
             disabled={isBetting || !canAfford}
-            className={`inline-flex h-8 w-full items-center justify-center rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              pendingChoice === 'YES'
-                ? 'bg-[var(--yes)] text-[var(--yes-foreground)] hover:opacity-90'
-                : 'bg-[var(--no)] text-[var(--no-foreground)] hover:opacity-90'
-            }`}
+            className={`inline-flex h-8 w-full items-center justify-center rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${pendingStyle.bg} ${pendingStyle.fg} hover:opacity-90`}
           >
             {isBetting
               ? 'Lisätään...'
-              : `Vahvista ${draftPot.toLocaleString('fi-FI')} F ${
-                  pendingChoice === 'YES' ? 'KYLLÄ' : 'EI'
-                }`}
+              : `Vahvista ${draftPot.toLocaleString('fi-FI')} F ${pendingLabel}`}
           </button>
         </div>
       )}

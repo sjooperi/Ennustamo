@@ -2,21 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Crown, Medal, Trophy, TrendingDown, TrendingUp, X } from 'lucide-react'
-import { STARTING_BALANCE } from '@/lib/auth-profile'
 import { formatFyrkka } from '@/lib/data'
-import {
-  initialsFromPublicName,
-  resolvePublicName,
-} from '@/lib/display-name'
-import { supabase } from '@/lib/supabase'
+import { fetchLeaderboard, type LeaderboardRow } from '@/lib/leaderboard'
+import { formatRoi } from '@/lib/roi'
 
-export type LeaderboardRow = {
-  id: string
-  name: string
-  initials: string
-  balance: number
-  profit: number
-}
+export type { LeaderboardRow }
 
 type LeaderboardModalProps = {
   open: boolean
@@ -29,66 +19,6 @@ const RANK_STYLES = [
   'bg-[oklch(0.65_0.11_50)] text-[oklch(0.2_0.05_50)]',
 ]
 
-type ProfileLeaderboardSource = {
-  id: string
-  display_name?: string | null
-  username?: string | null
-  email?: string | null
-  balance?: number | string | null
-  fyrkat?: number | string | null
-}
-
-async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
-  const primary = await supabase
-    .from('profiles')
-    .select('id, display_name, username, email, balance, fyrkat')
-    .order('balance', { ascending: false })
-    .limit(50)
-
-  let rows: ProfileLeaderboardSource[] | null = primary.data
-
-  if (primary.error) {
-    const fallback = await supabase
-      .from('profiles')
-      .select('id, username, balance, fyrkat')
-      .order('fyrkat', { ascending: false })
-      .limit(50)
-
-    if (fallback.error) {
-      console.error('Failed to load leaderboard:', primary.error.message)
-      return []
-    }
-    rows = (fallback.data ?? []).map((row) => ({
-      id: row.id,
-      username: row.username,
-      balance: row.balance,
-      fyrkat: row.fyrkat,
-      display_name: null,
-      email: null,
-    }))
-  }
-
-  if (!rows) return []
-
-  return rows
-    .map((row) => {
-      const balance = Number(row.balance ?? row.fyrkat ?? STARTING_BALANCE)
-      const name = resolvePublicName({
-        username: typeof row.username === 'string' ? row.username : null,
-        displayName: typeof row.display_name === 'string' ? row.display_name : null,
-        email: typeof row.email === 'string' ? row.email : null,
-      })
-      return {
-        id: row.id,
-        name,
-        initials: initialsFromPublicName(name),
-        balance,
-        profit: balance - STARTING_BALANCE,
-      }
-    })
-    .sort((a, b) => b.balance - a.balance || b.profit - a.profit)
-}
-
 export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -98,7 +28,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchLeaderboard()
+      const data = await fetchLeaderboard(50)
       setRows(data)
     } catch (err) {
       console.error(err)
@@ -149,7 +79,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                 Tulostaulukko
               </h2>
               <p className="truncate text-xs text-muted-foreground">
-                Järjestys saldon mukaan · lähtö {STARTING_BALANCE} F
+                Järjestys tuottoprosentin (ROI) mukaan
               </p>
             </div>
           </div>
@@ -172,7 +102,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
             <p className="py-10 text-center text-sm text-[var(--no)]">{error}</p>
           ) : rows.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              Ei vielä käyttäjiä tulostaulukossa.
+              Ei vielä panostaneita pelaajia. Lyö vetoa, niin ROI näkyy tässä.
             </p>
           ) : (
             <table className="w-full max-w-full table-fixed text-left text-sm">
@@ -180,11 +110,11 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="w-10 pb-2 font-medium">#</th>
                   <th className="pb-2 font-medium">Käyttäjä</th>
-                  <th className="w-[4.5rem] pb-2 text-right font-medium sm:w-20">
-                    Tulos
+                  <th className="w-[4.25rem] pb-2 text-right font-medium sm:w-[4.75rem]">
+                    ROI
                   </th>
-                  <th className="w-[4.5rem] pb-2 text-right font-medium sm:w-20">
-                    Saldo
+                  <th className="w-[4.25rem] pb-2 text-right font-medium sm:w-[4.75rem]">
+                    Tulos
                   </th>
                 </tr>
               </thead>
@@ -221,32 +151,47 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                           <span className="grid size-7 shrink-0 place-items-center rounded-full bg-secondary text-[10px] font-semibold sm:size-8 sm:text-xs">
                             {row.initials}
                           </span>
-                          <span className="truncate font-medium text-foreground">
-                            {row.name}
-                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-foreground">
+                              {row.name}
+                            </p>
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              Panostettu {formatFyrkka(Math.round(row.totalStaked))} F
+                            </p>
+                          </div>
                         </div>
                       </td>
                       <td className="py-2.5 pr-1 text-right align-middle">
                         <span
-                          className={`inline-flex max-w-full items-center justify-end gap-0.5 truncate font-mono text-[10px] font-semibold tabular-nums sm:text-xs ${
+                          className={`inline-flex max-w-full items-center justify-end gap-0.5 truncate font-mono text-[10px] font-bold tabular-nums sm:text-xs ${
+                            row.roi > 0
+                              ? 'text-[var(--yes)]'
+                              : row.roi < 0
+                                ? 'text-[var(--no)]'
+                                : 'text-muted-foreground'
+                          }`}
+                        >
+                          {row.roi > 0 ? (
+                            <TrendingUp className="size-3 shrink-0" />
+                          ) : row.roi < 0 ? (
+                            <TrendingDown className="size-3 shrink-0" />
+                          ) : null}
+                          {formatRoi(row.roi)}
+                        </span>
+                      </td>
+                      <td className="truncate py-2.5 text-right align-middle font-mono text-[10px] font-semibold tabular-nums sm:text-xs">
+                        <span
+                          className={
                             row.profit > 0
                               ? 'text-[var(--yes)]'
                               : row.profit < 0
                                 ? 'text-[var(--no)]'
                                 : 'text-muted-foreground'
-                          }`}
+                          }
                         >
-                          {row.profit > 0 ? (
-                            <TrendingUp className="size-3 shrink-0" />
-                          ) : row.profit < 0 ? (
-                            <TrendingDown className="size-3 shrink-0" />
-                          ) : null}
                           {row.profit > 0 ? '+' : ''}
                           {formatFyrkka(Math.round(row.profit))}
                         </span>
-                      </td>
-                      <td className="truncate py-2.5 text-right align-middle font-mono text-[10px] font-semibold tabular-nums text-primary sm:text-xs">
-                        {formatFyrkka(Math.round(row.balance))}
                       </td>
                     </tr>
                   )

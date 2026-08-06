@@ -1,4 +1,7 @@
 import { supabase } from '@/lib/supabase'
+import { parseMarketOptions, type MarketOptionDef } from '@/lib/amm'
+
+export type MarketOption = MarketOptionDef
 
 export type AdminMarket = {
   id: string
@@ -12,6 +15,7 @@ export type AdminMarket = {
   resolved_by: string | null
   yes_pool: number
   no_pool: number
+  options: MarketOption[]
 }
 
 export type MarketResolution = {
@@ -29,6 +33,17 @@ export type MarketResolution = {
   rolled_back_by: string | null
 }
 
+export type CreateMarketInput = {
+  title: string
+  options: string[]
+  category?: string | null
+  endDate?: string | null
+}
+
+export type UpdateMarketInput = CreateMarketInput & {
+  id: string
+}
+
 export async function checkIsAdmin(): Promise<boolean> {
   const { data, error } = await supabase.rpc('is_admin')
   if (error) {
@@ -37,6 +52,16 @@ export async function checkIsAdmin(): Promise<boolean> {
   }
   return Boolean(data)
 }
+
+export function defaultMarketOptions(): MarketOption[] {
+  return [
+    { key: 'YES', label: 'Kyllä' },
+    { key: 'NO', label: 'Ei' },
+  ]
+}
+
+// parseMarketOptions lives in lib/amm — re-export for admin callers
+export { parseMarketOptions } from '@/lib/amm'
 
 function mapAdminMarket(m: {
   id: string
@@ -50,6 +75,7 @@ function mapAdminMarket(m: {
   resolved_by?: string | null
   yes_pool: number | null
   no_pool: number | null
+  options?: unknown
 }): AdminMarket {
   return {
     id: m.id,
@@ -63,6 +89,7 @@ function mapAdminMarket(m: {
     resolved_by: m.resolved_by ?? null,
     yes_pool: Number(m.yes_pool || 0),
     no_pool: Number(m.no_pool || 0),
+    options: parseMarketOptions(m.options),
   }
 }
 
@@ -91,27 +118,32 @@ function isResolvedStatus(status: string | null | undefined): boolean {
   return (status || '').toLowerCase() === 'resolved'
 }
 
+const MARKET_SELECT =
+  'id, title, category, end_date, created_at, status, winning_option, resolved_at, resolved_by, yes_pool, no_pool, options'
+
 export async function fetchPendingMarkets(): Promise<AdminMarket[]> {
-  // DB may store status as OPEN/open — filter case-insensitively on the client
   const { data, error } = await supabase
     .from('markets')
-    .select(
-      'id, title, category, end_date, created_at, status, winning_option, resolved_at, resolved_by, yes_pool, no_pool'
-    )
+    .select(MARKET_SELECT)
     .order('end_date', { ascending: true })
 
   if (error) {
-    // Older schema without status / resolution columns
     const fallback = await supabase
       .from('markets')
-      .select('id, title, category, end_date, created_at, yes_pool, no_pool')
+      .select(
+        'id, title, category, end_date, created_at, status, winning_option, resolved_at, resolved_by, yes_pool, no_pool'
+      )
       .order('end_date', { ascending: true })
 
     if (fallback.error) {
       throw new Error(fallback.error.message)
     }
 
-    return sortPendingMarkets((fallback.data ?? []).map(mapAdminMarket))
+    return sortPendingMarkets(
+      (fallback.data ?? [])
+        .filter((m) => isOpenStatus(m.status))
+        .map(mapAdminMarket)
+    )
   }
 
   return sortPendingMarkets(
@@ -122,9 +154,7 @@ export async function fetchPendingMarkets(): Promise<AdminMarket[]> {
 export async function fetchResolvedMarkets(): Promise<AdminMarket[]> {
   const { data, error } = await supabase
     .from('markets')
-    .select(
-      'id, title, category, end_date, created_at, status, winning_option, resolved_at, resolved_by, yes_pool, no_pool'
-    )
+    .select(MARKET_SELECT)
     .order('resolved_at', { ascending: false })
     .limit(50)
 
@@ -164,9 +194,60 @@ export async function fetchResolutions(marketId?: string): Promise<MarketResolut
   }))
 }
 
+export async function createMarket(
+  input: CreateMarketInput
+): Promise<{ ok: true; market: AdminMarket } | { ok: false; error: string }> {
+  const labels = input.options.map((o) => o.trim()).filter(Boolean)
+  const { data, error } = await supabase.rpc('admin_create_market', {
+    p_title: input.title.trim(),
+    p_options: labels,
+    p_category: input.category?.trim() || null,
+    p_end_date: input.endDate || null,
+  })
+
+  if (error) {
+    return { ok: false, error: translateAdminError(error.message) }
+  }
+
+  return { ok: true, market: mapAdminMarket(data) }
+}
+
+export async function updateMarket(
+  input: UpdateMarketInput
+): Promise<{ ok: true; market: AdminMarket } | { ok: false; error: string }> {
+  const labels = input.options.map((o) => o.trim()).filter(Boolean)
+  const { data, error } = await supabase.rpc('admin_update_market', {
+    p_market_id: input.id,
+    p_title: input.title.trim(),
+    p_options: labels,
+    p_category: input.category?.trim() || null,
+    p_end_date: input.endDate || null,
+  })
+
+  if (error) {
+    return { ok: false, error: translateAdminError(error.message) }
+  }
+
+  return { ok: true, market: mapAdminMarket(data) }
+}
+
+export async function deleteMarket(
+  marketId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc('admin_delete_market', {
+    p_market_id: marketId,
+  })
+
+  if (error) {
+    return { ok: false, error: translateAdminError(error.message) }
+  }
+
+  return { ok: true }
+}
+
 export async function resolveMarket(
   marketId: string,
-  winningOption: 'YES' | 'NO',
+  winningOption: string,
   notes?: string
 ): Promise<{ ok: true; resolution: MarketResolution } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc('resolve_market', {
@@ -214,17 +295,43 @@ export async function rollbackResolution(
   }
 }
 
+export function optionLabel(
+  market: Pick<AdminMarket, 'options'>,
+  key: string | null | undefined
+): string {
+  if (!key) return '—'
+  const found = market.options.find((o) => o.key.toUpperCase() === key.toUpperCase())
+  if (found) return found.label
+  if (key.toUpperCase() === 'YES') return 'Kyllä'
+  if (key.toUpperCase() === 'NO') return 'Ei'
+  return key
+}
+
 export function translateAdminError(message: string): string {
   if (message.includes('UNAUTHORIZED')) return 'Kirjaudu sisään.'
   if (message.includes('FORBIDDEN')) return 'Ei ylläpito-oikeuksia.'
   if (message.includes('MARKET_NOT_FOUND')) return 'Kohdetta ei löytynyt.'
   if (message.includes('ALREADY_RESOLVED')) return 'Kohde on jo ratkaistu.'
   if (message.includes('INVALID_OUTCOME')) return 'Virheellinen lopputulos.'
+  if (message.includes('INVALID_TITLE')) return 'Kirjoita vähintään 3 merkin kysymys.'
+  if (message.includes('INVALID_OPTIONS')) {
+    return 'Lisää vähintään kaksi eri vastausvaihtoehtoa.'
+  }
+  if (message.includes('OPTIONS_LOCKED')) {
+    return 'Kohteella on jo vetoja — vaihtoehtojen määrää ei voi muuttaa. Voit silti nimetä vaihtoehdot uudelleen.'
+  }
   if (message.includes('RESOLUTION_NOT_FOUND')) return 'Ratkaisua ei löytynyt.'
   if (message.includes('ALREADY_ROLLED_BACK')) return 'Ratkaisu on jo peruttu.'
   if (message.includes('MARKET_NOT_ACTIVE_RESOLUTION')) {
     return 'Ratkaisu ei ole tämän kohteen aktiivinen ratkaisu.'
   }
-  if (message.includes('MARKET_CLOSED')) return 'Kohde on suljettu.'
+  if (message.includes('MARKET_CLOSED')) return 'Kohde on suljettu tai ratkaistu — muokkaus ei ole mahdollista.'
+  if (
+    message.includes('admin_update_market') ||
+    message.includes('admin_create_market') ||
+    message.includes('Could not find')
+  ) {
+    return 'Toiminto puuttuu tietokannasta. Aja migraatiot 011–013.'
+  }
   return message
 }

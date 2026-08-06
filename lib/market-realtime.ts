@@ -16,6 +16,8 @@ export type MarketRow = {
   no_pool?: number | null
   winning_option?: string | null
   resolved_at?: string | null
+  options?: unknown
+  option_pools?: unknown
   [key: string]: any
 }
 

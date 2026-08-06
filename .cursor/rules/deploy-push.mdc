@@ -1,0 +1,24 @@
+---
+description: Git push / Vercel-deploy -komennot Ennustamolle
+alwaysApply: true
+---
+
+# Deploy (git push)
+
+Käyttäjän vakiokomennot (kopioi sellaisenaan):
+
+```bash
+git add .
+git commit -m "Lisätään muutokset"
+git push origin main
+```
+
+Vaihtoehto (pushaa nykyinen haara):
+
+```bash
+git push origin HEAD
+```
+
+- Älä pushaa ellei käyttäjä pyydä.
+- Älä käytä `--force` mainiin ilman erillistä lupaa.
+- Muisti myös tiedostossa `PUSH.md` (näkyy vasemmassa palkissa).
