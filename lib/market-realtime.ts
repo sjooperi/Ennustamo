@@ -5,7 +5,6 @@ export function isOpenMarketStatus(status: unknown): boolean {
   return s === 'open' || s === ''
 }
 
-/** Row shape for Realtime — index signature matches supabase `.on<T>` constraint. */
 export type MarketRow = {
   id: string
   title?: string
@@ -19,6 +18,11 @@ export type MarketRow = {
   resolved_at?: string | null
   [key: string]: any
 }
+
+/** Default row type Supabase Realtime infers without a generated Database type. */
+type RealtimeRow = { [key: string]: any }
+
+export type MarketRealtimePayload = RealtimePostgresChangesPayload<RealtimeRow>
 
 export function asMarketRow(value: unknown): MarketRow | null {
   if (!value || typeof value !== 'object') return null
@@ -34,10 +38,13 @@ export function readMarketStatus(row: unknown): unknown {
   return (row as { status?: unknown }).status
 }
 
-/** Apply a markets postgres_changes event to the open-markets list. */
+/**
+ * Apply a markets postgres_changes event to the open-markets list.
+ * Accepts Supabase's default payload typing; validates rows via asMarketRow.
+ */
 export function applyMarketChange<T extends { id: string }>(
   prev: T[],
-  payload: RealtimePostgresChangesPayload<MarketRow>,
+  payload: MarketRealtimePayload,
   mapRow: (row: MarketRow) => T
 ): T[] {
   const event = payload.eventType

@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { useAuth } from '@/lib/auth-context'
 import {
   applyMarketChange,
@@ -165,10 +164,10 @@ export function MarketsSection() {
 
     const channel = supabase
       .channel('public-markets-live')
-      .on<MarketRow>(
+      .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'markets' },
-        (payload: RealtimePostgresChangesPayload<MarketRow>) => {
+        (payload) => {
           const wasOpen =
             payload.eventType === 'INSERT'
               ? false
