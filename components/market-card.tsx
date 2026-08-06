@@ -15,6 +15,8 @@ export type LiveMarket = {
   end_date: string
   yes_pool: number
   no_pool: number
+  status?: string | null
+  winning_option?: string | null
 }
 
 export type UserPosition = {

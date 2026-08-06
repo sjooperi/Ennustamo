@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import {
+  applyMarketChange,
+  isOpenMarketStatus,
+  type MarketRow,
+} from '@/lib/market-realtime'
 import { buildPriceHistory, type MarketBet } from '@/lib/price-history'
 import { supabase } from '@/lib/supabase'
 import { MarketCard, type LiveMarket, type UserPosition } from '@/components/market-card'
@@ -17,7 +22,21 @@ function translateBetError(message: string): string {
   if (message.includes('INVALID_AMOUNT')) return 'Virheellinen panos.'
   if (message.includes('MARKET_NOT_FOUND')) return 'Kohdetta ei löytynyt.'
   if (message.includes('INVALID_SHARES')) return 'Panos on liian pieni tälle markkinalle.'
+  if (message.includes('MARKET_CLOSED')) return 'Kohde on suljettu tai ratkaistu.'
   return message
+}
+
+function toLiveMarket(row: MarketRow): LiveMarket & { created_at?: string } {
+  return {
+    id: row.id,
+    title: String(row.title || ''),
+    category: String(row.category || ''),
+    end_date: String(row.end_date || ''),
+    yes_pool: Number(row.yes_pool || 0),
+    no_pool: Number(row.no_pool || 0),
+    status: row.status ?? null,
+    created_at: row.created_at ? String(row.created_at) : undefined,
+  }
 }
 
 export function MarketsSection() {
@@ -65,9 +84,22 @@ export function MarketsSection() {
       ])
 
       if (marketsResult.error) {
-        console.error('Failed to load markets:', marketsResult.error.message)
+        if (
+          marketsResult.error.message?.includes('status') ||
+          marketsResult.error.code === '42703'
+        ) {
+          const fallback = await supabase
+            .from('markets')
+            .select('*')
+            .order('created_at', { ascending: false })
+          if (fallback.data) setMarkets(fallback.data)
+        } else {
+          console.error('Failed to load markets:', marketsResult.error.message)
+        }
       } else if (marketsResult.data) {
-        setMarkets(marketsResult.data)
+        setMarkets(
+          marketsResult.data.filter((m) => isOpenMarketStatus(m.status))
+        )
       }
 
       if (betsResult.error) {
@@ -123,9 +155,71 @@ export function MarketsSection() {
   useEffect(() => {
     if (!ready) return
     void loadData()
-    const timer = setInterval(() => void loadData(), 5000)
-    return () => clearInterval(timer)
   }, [loadData, ready])
+
+  // Live updates: resolution removes market; rollback / pool changes patch list
+  useEffect(() => {
+    if (!ready) return
+
+    const channel = supabase
+      .channel('public-markets-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'markets' },
+        (payload) => {
+          const wasOpen = isOpenMarketStatus(
+            (payload.old as MarketRow | undefined)?.status
+          )
+          const isOpen = isOpenMarketStatus(
+            (payload.new as MarketRow | undefined)?.status
+          )
+
+          setMarkets((prev) => applyMarketChange(prev, payload, toLiveMarket))
+
+          // Winner payouts / rollback — refresh Fyrkka balance
+          if (user && wasOpen !== isOpen) {
+            void refreshProfile()
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bets' },
+        (payload) => {
+          const row = payload.new as {
+            market_id?: string
+            option?: string
+            amount?: number
+            created_at?: string
+          }
+          if (!row?.market_id) return
+
+          setMarketBets((prev) => {
+            const list = prev[row.market_id!] ?? []
+            return {
+              ...prev,
+              [row.market_id!]: [
+                ...list,
+                {
+                  option: String(row.option || ''),
+                  amount: Number(row.amount || 0),
+                  created_at: row.created_at || new Date().toISOString(),
+                },
+              ],
+            }
+          })
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('Realtime markets channel error:', err)
+        }
+      })
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [ready, user, refreshProfile])
 
   const getStake = (marketId: string) => stakeByMarket[marketId] ?? DEFAULT_STAKE
 

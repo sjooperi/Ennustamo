@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, Coins, LogOut, Menu, Search, Trophy, TrendingUp, UserRound } from 'lucide-react'
+import { Bell, Coins, LogOut, Menu, Search, Shield, Trophy, TrendingUp, UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { LeaderboardModal } from '@/components/leaderboard-modal'
@@ -16,6 +16,7 @@ const NAV_LINKS = [
   { label: 'Markkinat', href: '/' },
   { label: 'Tulostaulukko', href: '#leaderboard', action: 'leaderboard' as const },
   { label: 'Säännöt', href: '#' },
+  { label: 'Hallinta', href: '/admin', action: 'admin' as const },
 ]
 
 export function SiteHeader() {
@@ -29,6 +30,10 @@ export function SiteHeader() {
     displayName: profile?.display_name,
     email: user?.email ?? profile?.email,
   })
+
+  const navLinks = NAV_LINKS.filter(
+    (link) => link.action !== 'admin' || Boolean(profile?.is_admin)
+  )
 
   const handleSignOut = async () => {
     await signOut()
@@ -60,7 +65,7 @@ export function SiteHeader() {
 
           {/* Desktop nav */}
           <nav className="ml-4 hidden items-center gap-1 md:flex">
-            {NAV_LINKS.map((link, i) =>
+            {navLinks.map((link, i) =>
               link.action === 'leaderboard' ? (
                 <button
                   key={link.label}
@@ -71,6 +76,15 @@ export function SiteHeader() {
                   <Trophy className="size-3.5" />
                   {link.label}
                 </button>
+              ) : link.action === 'admin' ? (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                >
+                  <Shield className="size-3.5" />
+                  {link.label}
+                </a>
               ) : (
                 <a
                   key={link.label}
@@ -188,7 +202,7 @@ export function SiteHeader() {
           aria-label="Päänavigaatio"
           className="flex max-w-full gap-1.5 overflow-x-auto overscroll-x-contain border-t border-border/60 px-3 py-2 md:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {NAV_LINKS.map((link, i) =>
+          {navLinks.map((link, i) =>
             link.action === 'leaderboard' ? (
               <button
                 key={link.label}
@@ -199,6 +213,15 @@ export function SiteHeader() {
                 <Trophy className="size-3.5" />
                 {link.label}
               </button>
+            ) : link.action === 'admin' ? (
+              <a
+                key={link.label}
+                href={link.href}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary"
+              >
+                <Shield className="size-3.5" />
+                {link.label}
+              </a>
             ) : (
               <a
                 key={link.label}
@@ -226,7 +249,7 @@ export function SiteHeader() {
                 className="h-9 w-full rounded-xl border border-input bg-secondary/60 pr-3 pl-9 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40 focus:outline-none"
               />
             </div>
-            {NAV_LINKS.map((link) =>
+            {navLinks.map((link) =>
               link.action === 'leaderboard' ? (
                 <button
                   key={link.label}
@@ -237,6 +260,15 @@ export function SiteHeader() {
                   <Trophy className="size-4" />
                   {link.label}
                 </button>
+              ) : link.action === 'admin' ? (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary hover:bg-secondary"
+                >
+                  <Shield className="size-4" />
+                  {link.label}
+                </a>
               ) : (
                 <a
                   key={link.label}

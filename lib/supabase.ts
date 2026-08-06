@@ -29,3 +29,28 @@ export function getAuthCallbackUrl(): string {
 
   return 'http://localhost:3000/auth/callback'
 }
+
+const AUTH_RETURN_KEY = 'ennustamo_auth_return_to'
+
+/** Remember where to return after Google / email auth (e.g. /admin). */
+export function rememberAuthReturnPath(path?: string): void {
+  if (typeof window === 'undefined') return
+  const next =
+    path ||
+    `${window.location.pathname}${window.location.search}${window.location.hash}`
+  if (!next || next.startsWith('/auth/callback')) {
+    sessionStorage.removeItem(AUTH_RETURN_KEY)
+    return
+  }
+  sessionStorage.setItem(AUTH_RETURN_KEY, next)
+}
+
+export function consumeAuthReturnPath(fallback = '/'): string {
+  if (typeof window === 'undefined') return fallback
+  const stored = sessionStorage.getItem(AUTH_RETURN_KEY)
+  sessionStorage.removeItem(AUTH_RETURN_KEY)
+  if (!stored || !stored.startsWith('/') || stored.startsWith('//')) {
+    return fallback
+  }
+  return stored
+}

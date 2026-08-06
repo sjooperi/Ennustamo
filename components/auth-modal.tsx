@@ -4,7 +4,7 @@ import { useEffect, useId, useState } from 'react'
 import { Lock, Mail, TrendingUp, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ensureProfileForUser } from '@/lib/auth-profile'
-import { getAuthCallbackUrl, supabase } from '@/lib/supabase'
+import { getAuthCallbackUrl, rememberAuthReturnPath, supabase } from '@/lib/supabase'
 
 type AuthMode = 'login' | 'register'
 
@@ -141,6 +141,7 @@ export function AuthModal({
     setOauthLoading(true)
 
     try {
+      rememberAuthReturnPath()
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -208,6 +209,8 @@ export function AuthModal({
         setError(translateAuthError(signUpError.message))
         return
       }
+
+      rememberAuthReturnPath()
 
       // Supabase returns a user with empty identities when email already exists
       // and "Confirm email" is enabled (to avoid leaking account existence).

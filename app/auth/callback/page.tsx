@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TrendingUp } from 'lucide-react'
 import { ensureProfileForUser } from '@/lib/auth-profile'
-import { supabase } from '@/lib/supabase'
+import { consumeAuthReturnPath, supabase } from '@/lib/supabase'
 
 /**
  * Single place that exchanges the OAuth/email PKCE `code` for a session.
  * Guarded against React Strict Mode double-invoke.
+ * Returns to the page where login started (e.g. /admin).
  */
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -20,6 +21,11 @@ export default function AuthCallbackPage() {
     started.current = true
 
     let cancelled = false
+
+    const goNext = () => {
+      const next = consumeAuthReturnPath('/')
+      router.replace(next)
+    }
 
     async function finishAuth() {
       try {
@@ -44,9 +50,8 @@ export default function AuthCallbackPage() {
           if (existing?.user) {
             await ensureProfileForUser(existing.user)
             if (!cancelled) setMessage('Kirjautuminen onnistui. Siirretään...')
-            // Clean query params from the address bar
             window.history.replaceState({}, '', '/auth/callback')
-            router.replace('/')
+            goNext()
             return
           }
         }
@@ -62,7 +67,7 @@ export default function AuthCallbackPage() {
             if (fallback?.user) {
               await ensureProfileForUser(fallback.user)
               if (!cancelled) setMessage('Kirjautuminen onnistui. Siirretään...')
-              router.replace('/')
+              goNext()
               return
             }
             throw error
@@ -84,7 +89,7 @@ export default function AuthCallbackPage() {
         if (!cancelled) {
           setMessage('Kirjautuminen onnistui. Siirretään...')
         }
-        router.replace('/')
+        goNext()
       } catch (err) {
         const text =
           err instanceof Error ? err.message : 'Kirjautuminen epäonnistui.'
