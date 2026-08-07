@@ -12,9 +12,13 @@ export const COMMUNITY_TOP_CROSS_PROMOTE = 5
 export const COMMUNITY_TOP_CREATOR_REWARDS = [200, 150, 100, 50, 25] as const
 
 /** Monthly rewards = 2× weekly. Rank 1 also gets Kuukauden markkinavelho badge. */
-export const COMMUNITY_MONTHLY_CREATOR_REWARDS = COMMUNITY_TOP_CREATOR_REWARDS.map(
-  (n) => n * 2
-) as readonly [number, number, number, number, number]
+export const COMMUNITY_MONTHLY_CREATOR_REWARDS = [
+  COMMUNITY_TOP_CREATOR_REWARDS[0] * 2,
+  COMMUNITY_TOP_CREATOR_REWARDS[1] * 2,
+  COMMUNITY_TOP_CREATOR_REWARDS[2] * 2,
+  COMMUNITY_TOP_CREATOR_REWARDS[3] * 2,
+  COMMUNITY_TOP_CREATOR_REWARDS[4] * 2,
+] as const
 
 export const MARKET_WIZARD_BADGE = 'market_wizard' as const
 export const MARKET_WIZARD_BADGE_LABEL = 'Kuukauden markkinavelho'
