@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context'
 import { parseMarketOptions, parseOptionPools } from '@/lib/amm'
 import {
   applyMarketChange,
+  isListablePublicMarket,
   isOpenForBetting,
   isOpenMarketStatus,
   readMarketStatus,
@@ -17,6 +18,13 @@ import {
 } from '@/lib/price-history'
 import { supabase } from '@/lib/supabase'
 import { MarketCard, type LiveMarket, type UserPosition } from '@/components/market-card'
+import { CommunityCreateForm } from '@/components/community-create-form'
+import {
+  COMMUNITY_CATEGORY,
+  isCommunityMarket,
+  reportCommunityMarket,
+  resolveCommunityMarket,
+} from '@/lib/community'
 
 const DEFAULT_STAKE = 0
 
@@ -28,7 +36,12 @@ function translateBetError(message: string): string {
   if (message.includes('MARKET_NOT_FOUND')) return 'Kohdetta ei löytynyt.'
   if (message.includes('INVALID_SHARES')) return 'Panos on liian pieni tälle markkinalle.'
   if (message.includes('MARKET_CLOSED')) return 'Kohde on suljettu — ottelu on alkanut tai ratkaistu.'
+  if (message.includes('DAILY_LIMIT')) return 'Voit luoda enintään 2 kohdetta päivässä.'
   return message
+}
+
+function isListableMarket(row: MarketRow): boolean {
+  return isListablePublicMarket(row)
 }
 
 function toLiveMarket(row: MarketRow): LiveMarket & { created_at?: string } {
@@ -69,6 +82,16 @@ function toLiveMarket(row: MarketRow): LiveMarket & { created_at?: string } {
     metadata,
     game_date: gameDate,
     created_at: row.created_at ? String(row.created_at) : undefined,
+    created_by: row.created_by ? String(row.created_by) : null,
+    resolution_criteria: row.resolution_criteria
+      ? String(row.resolution_criteria)
+      : null,
+    resolution_deadline: row.resolution_deadline
+      ? String(row.resolution_deadline)
+      : null,
+    creator_stake: Number(row.creator_stake || 0),
+    stake_status: row.stake_status ? String(row.stake_status) : null,
+    total_volume: Number(row.total_volume || 0),
   }
 }
 
@@ -97,6 +120,9 @@ export function MarketsSection() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [stakeByMarket, setStakeByMarket] = useState<Record<string, number>>({})
   const [marketBets, setMarketBets] = useState<Record<string, MarketBet[]>>({})
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [reportingId, setReportingId] = useState<string | null>(null)
+  const [actionOk, setActionOk] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -143,7 +169,7 @@ export function MarketsSection() {
           if (fallback.data) {
             setMarkets(
               fallback.data
-                .filter((m) => isOpenForBetting(m as MarketRow))
+                .filter((m) => isListableMarket(m as MarketRow))
                 .map((m) => toLiveMarket(m as MarketRow))
             )
           }
@@ -153,7 +179,7 @@ export function MarketsSection() {
       } else if (marketsResult.data) {
         setMarkets(
           marketsResult.data
-            .filter((m) => isOpenForBetting(m as MarketRow))
+            .filter((m) => isListableMarket(m as MarketRow))
             .map((m) => toLiveMarket(m as MarketRow))
         )
       }
@@ -212,13 +238,19 @@ export function MarketsSection() {
     void loadData()
   }, [loadData, ready])
 
-  // Drop markets from the open list the moment first pitch / end_date passes
+  // Drop expired non-community markets from the open list
   useEffect(() => {
     if (!ready) return
     const tick = () => {
       const now = Date.now()
       setMarkets((prev) => {
-        const next = prev.filter((m) => isOpenForBetting(m, now))
+        const next = prev.filter((m) => {
+          if (isCommunityMarket(m)) {
+            const s = String(m.status || 'open').toLowerCase()
+            return s === 'open' || s === 'closed'
+          }
+          return isOpenForBetting(m, now)
+        })
         return next.length === prev.length ? prev : next
       })
     }
@@ -348,7 +380,55 @@ export function MarketsSection() {
     void loadData()
   }
 
-  const categories = ['Kaikki', 'Politiikka', 'Talous', 'Urheilu', 'Viihde', 'Teknologia']
+  const handleResolveCommunity = async (marketId: string, winningOption: string) => {
+    setActionError(null)
+    setActionOk(null)
+    setResolvingId(marketId)
+    const result = await resolveCommunityMarket(marketId, winningOption)
+    setResolvingId(null)
+    if (!result.ok) {
+      setActionError(result.error)
+      return
+    }
+    setActionOk('Kohde ratkaistu. Pantti palautettu ja voitot maksettu.')
+    await refreshProfile()
+    void loadData()
+  }
+
+  const handleReportCommunity = async (marketId: string, reason: string) => {
+    setActionError(null)
+    setActionOk(null)
+    if (!user) {
+      openAuth('login')
+      return
+    }
+    setReportingId(marketId)
+    const result = await reportCommunityMarket(marketId, reason)
+    setReportingId(null)
+    if (!result.ok) {
+      setActionError(result.error)
+      return
+    }
+    if (result.removed) {
+      setActionOk(
+        'Kohde poistettiin raporttien perusteella. Vedot palautettiin pelaajille; luojan pantti takavarikoitiin.'
+      )
+      await refreshProfile()
+    } else {
+      setActionOk(`Raportti vastaanotettu (${result.reportCount}/5).`)
+    }
+    void loadData()
+  }
+
+  const categories = [
+    'Kaikki',
+    'Yhteisö',
+    'Politiikka',
+    'Talous',
+    'Urheilu',
+    'Viihde',
+    'Teknologia',
+  ]
 
   const sportSubcategories = useMemo(() => {
     const set = new Set<string>()
@@ -363,10 +443,19 @@ export function MarketsSection() {
 
   const filteredMarkets = useMemo(() => {
     let list = markets
-    if (selectedCategory !== 'Kaikki') {
+    if (selectedCategory.toLowerCase() === 'yhteisö') {
+      list = list.filter((market) => isCommunityMarket(market))
+      list = [...list].sort(
+        (a, b) => Number(b.total_volume || 0) - Number(a.total_volume || 0)
+      )
+    } else if (selectedCategory !== 'Kaikki') {
       list = list.filter(
         (market) => market.category?.toLowerCase() === selectedCategory.toLowerCase()
       )
+      // Non-community categories: only actively bettable
+      list = list.filter((m) => isOpenForBetting(m))
+    } else {
+      list = list.filter((m) => isOpenForBetting(m))
     }
     if (
       selectedCategory.toLowerCase() === 'urheilu' &&
@@ -430,9 +519,18 @@ export function MarketsSection() {
         positions={userPositions[market.id] ?? []}
         isBetting={bettingMarketId === market.id}
         isLoggedIn={!!user}
+        currentUserId={user?.id}
         onStakeChange={(value) => setStake(market.id, value)}
         onBet={(choice) => handleBet(market.id, choice)}
         onLogin={() => openAuth('login')}
+        onResolveCommunity={
+          isCommunityMarket(market) ? handleResolveCommunity : undefined
+        }
+        onReportCommunity={
+          isCommunityMarket(market) ? handleReportCommunity : undefined
+        }
+        isResolving={resolvingId === market.id}
+        isReporting={reportingId === market.id}
       />
     )
   }
@@ -445,6 +543,14 @@ export function MarketsSection() {
           className="mb-4 rounded-xl border border-[var(--no)]/30 bg-[var(--no)]/10 px-3 py-2 text-sm text-[var(--no)]"
         >
           {actionError}
+        </div>
+      )}
+      {actionOk && (
+        <div
+          role="status"
+          className="mb-4 rounded-xl border border-[var(--yes)]/30 bg-[var(--yes)]/10 px-3 py-2 text-sm text-[var(--yes)]"
+        >
+          {actionOk}
         </div>
       )}
 
@@ -466,6 +572,18 @@ export function MarketsSection() {
           </button>
         ))}
       </div>
+
+      {selectedCategory === COMMUNITY_CATEGORY && (
+        <CommunityCreateForm
+          balance={balance}
+          isLoggedIn={!!user}
+          onLogin={() => openAuth('login')}
+          onCreated={() => {
+            void refreshProfile()
+            void loadData()
+          }}
+        />
+      )}
 
       {selectedCategory === 'Urheilu' && (
         <div className="mb-5 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

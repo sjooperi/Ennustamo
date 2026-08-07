@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { LineChart, X } from 'lucide-react'
+import { Flag, LineChart, X } from 'lucide-react'
 import {
   formatShares,
   getOptionPrices,
@@ -13,6 +13,10 @@ import {
   type MarketOptionDef,
 } from '@/lib/amm'
 import { bettingClosesAtMs } from '@/lib/market-realtime'
+import {
+  COMMUNITY_REPORT_REASONS,
+  isCommunityMarket,
+} from '@/lib/community'
 import { isYesNoChoiceMarket, optionVisualStyle } from '@/lib/option-styles'
 import { getPriceChange, type ChartSeries, type PricePoint } from '@/lib/price-history'
 import { MarketPriceChart } from '@/components/market-price-chart'
@@ -31,6 +35,12 @@ export type LiveMarket = {
   option_pools?: Record<string, number>
   metadata?: Record<string, unknown> | null
   game_date?: string | null
+  created_by?: string | null
+  resolution_criteria?: string | null
+  resolution_deadline?: string | null
+  creator_stake?: number
+  stake_status?: string | null
+  total_volume?: number
 }
 
 export type UserPosition = {
@@ -63,9 +73,14 @@ export type MarketCardProps = {
   positions: UserPosition[]
   isBetting: boolean
   isLoggedIn: boolean
+  currentUserId?: string | null
   onStakeChange: (value: number) => void
   onBet: (choice: string) => void
   onLogin: () => void
+  onResolveCommunity?: (marketId: string, winningOption: string) => Promise<void>
+  onReportCommunity?: (marketId: string, reason: string) => Promise<void>
+  isResolving?: boolean
+  isReporting?: boolean
 }
 
 export function MarketCard({
@@ -77,13 +92,23 @@ export function MarketCard({
   positions,
   isBetting,
   isLoggedIn,
+  currentUserId,
   onStakeChange,
   onBet,
   onLogin,
+  onResolveCommunity,
+  onReportCommunity,
+  isResolving,
+  isReporting,
 }: MarketCardProps) {
   // Charts closed by default; rename avoids Fast Refresh keeping old open state
   const [chartOpen, setChartOpen] = useState(false)
   const [pendingChoice, setPendingChoice] = useState<string | null>(null)
+  const [resolveChoice, setResolveChoice] = useState<string | null>(null)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportReason, setReportReason] = useState<string>(
+    COMMUNITY_REPORT_REASONS[0]
+  )
 
   const options: MarketOptionDef[] =
     market.options && market.options.length >= 2
@@ -108,6 +133,28 @@ export function MarketCard({
     null
   const isGameClose =
     typeof market.metadata?.game_start === 'string' || market.subcategory === 'MLB'
+  const statusLower = String(market.status || 'open').toLowerCase()
+  const resolveDeadlineMs = market.resolution_deadline
+    ? new Date(market.resolution_deadline).getTime()
+    : null
+  const canCreatorResolve = Boolean(
+    onResolveCommunity &&
+      currentUserId &&
+      market.created_by &&
+      currentUserId === market.created_by &&
+      bettingClosed &&
+      (statusLower === 'open' || statusLower === 'closed') &&
+      (resolveDeadlineMs == null || resolveDeadlineMs > Date.now())
+  )
+  const isCommunity = isCommunityMarket(market)
+  const isOwnCommunity =
+    Boolean(currentUserId && market.created_by && currentUserId === market.created_by)
+  const canReport = Boolean(
+    onReportCommunity &&
+      isCommunity &&
+      !isOwnCommunity &&
+      (statusLower === 'open' || statusLower === 'closed')
+  )
   const closeLabel = (() => {
     const when = formatEndDateTime(closesAtIso)
     if (bettingClosed) {
@@ -221,20 +268,42 @@ export function MarketCard({
             {closeLabel}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setChartOpen((open) => !open)}
-          aria-pressed={chartOpen}
-          aria-label={chartOpen ? 'Piilota graafi' : 'Näytä graafi'}
-          className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium transition-colors ${
-            chartOpen
-              ? 'bg-primary/15 text-primary'
-              : 'hover:bg-secondary hover:text-foreground'
-          }`}
-        >
-          <LineChart className="size-3" />
-          Graafi
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {isCommunity && canReport && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!isLoggedIn) {
+                  onLogin()
+                  return
+                }
+                setReportOpen((v) => !v)
+              }}
+              className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold transition-colors ${
+                reportOpen
+                  ? 'bg-[var(--no)]/15 text-[var(--no)]'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+              }`}
+            >
+              <Flag className="size-3" />
+              Raportoi
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setChartOpen((open) => !open)}
+            aria-pressed={chartOpen}
+            aria-label={chartOpen ? 'Piilota graafi' : 'Näytä graafi'}
+            className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium transition-colors ${
+              chartOpen
+                ? 'bg-primary/15 text-primary'
+                : 'hover:bg-secondary hover:text-foreground'
+            }`}
+          >
+            <LineChart className="size-3" />
+            Graafi
+          </button>
+        </div>
       </div>
 
       <h3 className="mt-1.5 text-pretty break-words text-sm font-semibold leading-snug text-foreground">
@@ -546,6 +615,97 @@ export function MarketCard({
               ? 'Lisätään...'
               : `Vahvista ${draftPot.toLocaleString('fi-FI')} F ${pendingLabel}`}
           </button>
+        </div>
+      )}
+
+      {market.resolution_criteria && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Ratkaisu:{' '}
+          <span className="text-foreground">{market.resolution_criteria}</span>
+        </p>
+      )}
+
+      {canCreatorResolve && (
+        <div className="mt-3 space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
+          <p className="text-[11px] font-semibold text-foreground">
+            Ratkaise kohde (pantti palautuu)
+          </p>
+          {market.resolution_deadline && (
+            <p className="text-[10px] text-muted-foreground">
+              Määräaika {formatEndDateTime(market.resolution_deadline)}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {options.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setResolveChoice(opt.key)}
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${
+                  resolveChoice === opt.key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={!resolveChoice || isResolving}
+            onClick={() => {
+              if (!resolveChoice || !onResolveCommunity) return
+              void onResolveCommunity(market.id, resolveChoice)
+            }}
+            className="inline-flex h-8 w-full items-center justify-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            {isResolving ? 'Ratkaistaan...' : 'Vahvista voittaja'}
+          </button>
+        </div>
+      )}
+
+      {canReport && reportOpen && (
+        <div className="mt-2 space-y-2 rounded-lg border border-border bg-secondary/40 p-2.5">
+          <p className="text-[11px] font-semibold text-foreground">Raportin syy</p>
+          <div className="flex flex-wrap gap-1.5">
+            {COMMUNITY_REPORT_REASONS.map((reason) => (
+              <button
+                key={reason}
+                type="button"
+                onClick={() => setReportReason(reason)}
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+                  reportReason === reason
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-card text-foreground ring-1 ring-inset ring-border'
+                }`}
+              >
+                {reason}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={isReporting}
+              onClick={() => {
+                if (!onReportCommunity) return
+                void onReportCommunity(market.id, reportReason).then(() => {
+                  setReportOpen(false)
+                })
+              }}
+              className="inline-flex h-8 flex-1 items-center justify-center rounded-lg bg-[var(--no)]/90 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {isReporting ? 'Lähetetään...' : 'Lähetä raportti'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportOpen(false)}
+              className="inline-flex h-8 items-center justify-center rounded-lg bg-secondary px-3 text-xs font-semibold text-foreground"
+            >
+              Peruuta
+            </button>
+          </div>
         </div>
       )}
     </article>

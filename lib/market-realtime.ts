@@ -36,6 +36,24 @@ export function isOpenForBetting(
   return true
 }
 
+/** Keep on public list (includes closed community markets awaiting creator resolve). */
+export function isListablePublicMarket(row: {
+  status?: unknown
+  category?: string | null
+  end_date?: string | null
+  metadata?: Record<string, unknown> | null
+}): boolean {
+  const status = String(row.status ?? 'open').toLowerCase().trim()
+  if (status === 'resolved' || status === 'cancelled' || status === 'disputed' || status === 'removed') {
+    return false
+  }
+  const category = String(row.category || '').toLowerCase()
+  if (category === 'yhteisö') {
+    return status === 'open' || status === 'closed'
+  }
+  return isOpenForBetting(row)
+}
+
 export type MarketRow = {
   id: string
   title?: string
@@ -91,7 +109,7 @@ export function applyMarketChange<T extends { id: string }>(
   const row = asMarketRow(payload.new)
   if (!row) return prev
 
-  if (!isOpenForBetting(row)) {
+  if (!isListablePublicMarket(row)) {
     return prev.filter((m) => m.id !== row.id)
   }
 

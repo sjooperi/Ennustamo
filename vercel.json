@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/mlb-resolve",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/community-slash",
+      "schedule": "0 9 * * *"
     }
   ]
 }

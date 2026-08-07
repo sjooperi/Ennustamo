@@ -34,6 +34,7 @@ import { formatFyrkka } from '@/lib/data'
 
 const CATEGORIES = [
   'Yleinen',
+  'Yhteisö',
   'Politiikka',
   'Talous',
   'Urheilu',
