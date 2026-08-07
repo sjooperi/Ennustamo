@@ -1,0 +1,31 @@
+# Frequent MLB sync/resolve (Vercel Hobby allows only 1 run/day per cron).
+# Requires repo secrets: CRON_SECRET, VERCEL_APP_URL (e.g. https://ennustamo.vercel.app)
+
+name: MLB cron
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  mlb-tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close started games
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.VERCEL_APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "VERCEL_APP_URL secret missing — skip"
+            exit 0
+          fi
+          AUTH_HEADER=()
+          if [ -n "${CRON_SECRET:-}" ]; then
+            AUTH_HEADER=(-H "Authorization: Bearer ${CRON_SECRET}")
+          fi
+          curl -fsS "${AUTH_HEADER[@]}" "${APP_URL%/}/api/cron/mlb-odds" | tee /tmp/odds.json
+          curl -fsS "${AUTH_HEADER[@]}" "${APP_URL%/}/api/cron/mlb-resolve" | tee /tmp/resolve.json
