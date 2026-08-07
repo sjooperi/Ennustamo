@@ -5,6 +5,37 @@ export function isOpenMarketStatus(status: unknown): boolean {
   return s === 'open' || s === ''
 }
 
+/** Prefer MLB first-pitch (`metadata.game_start`); fall back to `end_date`. */
+export function bettingClosesAtMs(row: {
+  end_date?: string | null
+  metadata?: Record<string, unknown> | null
+}): number | null {
+  const meta = row.metadata
+  const gameStart =
+    meta && typeof meta === 'object' && typeof meta.game_start === 'string'
+      ? meta.game_start
+      : null
+  const raw = gameStart || row.end_date || null
+  if (!raw) return null
+  const ms = new Date(raw).getTime()
+  return Number.isNaN(ms) ? null : ms
+}
+
+/** Open for betting: status open AND first pitch / end_date still in the future. */
+export function isOpenForBetting(
+  row: {
+    status?: unknown
+    end_date?: string | null
+    metadata?: Record<string, unknown> | null
+  },
+  nowMs: number = Date.now()
+): boolean {
+  if (!isOpenMarketStatus(row.status)) return false
+  const closes = bettingClosesAtMs(row)
+  if (closes != null && closes <= nowMs) return false
+  return true
+}
+
 export type MarketRow = {
   id: string
   title?: string
@@ -60,7 +91,7 @@ export function applyMarketChange<T extends { id: string }>(
   const row = asMarketRow(payload.new)
   if (!row) return prev
 
-  if (!isOpenMarketStatus(row.status)) {
+  if (!isOpenForBetting(row)) {
     return prev.filter((m) => m.id !== row.id)
   }
 

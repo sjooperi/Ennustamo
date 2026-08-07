@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mlb:import": "node scripts/import-mlb-markets.mjs",
+    "mlb:import:dry": "node scripts/import-mlb-markets.mjs --dry-run",
+    "mlb:odds": "node scripts/sync-mlb-odds.mjs",
+    "mlb:odds:dry": "node scripts/sync-mlb-odds.mjs --dry-run",
+    "mlb:resolve": "node scripts/resolve-mlb-markets.mjs",
+    "mlb:resolve:dry": "node scripts/resolve-mlb-markets.mjs --dry-run"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

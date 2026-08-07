@@ -67,11 +67,31 @@
   --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.72 0.14 200);
 
-  /* Semantic YES / NO — NO kept light for contrast on dark UI */
+  /* Semantic YES / NO — redder NO with light text on filled buttons */
   --yes: oklch(0.72 0.17 155);
   --yes-foreground: oklch(0.16 0.02 155);
-  --no: oklch(0.86 0.14 32);
-  --no-foreground: oklch(0.22 0.04 28);
+  --no: oklch(0.62 0.22 25);
+  --no-foreground: oklch(0.98 0.01 30);
+
+  /* Two-way non-yes/no options (e.g. teams) — stylish darks */
+  --opt-dark-a: oklch(0.42 0.045 250);
+  --opt-dark-a-fg: oklch(0.96 0.01 250);
+  --opt-dark-b: oklch(0.4 0.04 200);
+  --opt-dark-b-fg: oklch(0.96 0.01 200);
+
+  /* Multi-option palette — no red/rose/magenta */
+  --opt-1: oklch(0.7 0.14 200);
+  --opt-1-fg: oklch(0.16 0.02 200);
+  --opt-2: oklch(0.75 0.14 85);
+  --opt-2-fg: oklch(0.2 0.04 85);
+  --opt-3: oklch(0.68 0.14 280);
+  --opt-3-fg: oklch(0.98 0.01 280);
+  --opt-4: oklch(0.72 0.13 175);
+  --opt-4-fg: oklch(0.16 0.03 175);
+  --opt-5: oklch(0.68 0.12 245);
+  --opt-5-fg: oklch(0.98 0.01 245);
+  --opt-6: oklch(0.74 0.14 145);
+  --opt-6-fg: oklch(0.18 0.04 145);
 
   --radius: 0.875rem;
 }

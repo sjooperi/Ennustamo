@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context'
 import { parseMarketOptions, parseOptionPools } from '@/lib/amm'
 import {
   applyMarketChange,
+  isOpenForBetting,
   isOpenMarketStatus,
   readMarketStatus,
   type MarketRow,
@@ -26,7 +27,7 @@ function translateBetError(message: string): string {
   if (message.includes('INVALID_AMOUNT')) return 'Virheellinen panos.'
   if (message.includes('MARKET_NOT_FOUND')) return 'Kohdetta ei löytynyt.'
   if (message.includes('INVALID_SHARES')) return 'Panos on liian pieni tälle markkinalle.'
-  if (message.includes('MARKET_CLOSED')) return 'Kohde on suljettu tai ratkaistu.'
+  if (message.includes('MARKET_CLOSED')) return 'Kohde on suljettu — ottelu on alkanut tai ratkaistu.'
   return message
 }
 
@@ -43,17 +44,45 @@ function toLiveMarket(row: MarketRow): LiveMarket & { created_at?: string } {
     optionPools.NO = Number(row.no_pool || 0)
   }
 
+  const metadata =
+    row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : null
+  const gameDate =
+    typeof metadata?.game_date === 'string'
+      ? metadata.game_date
+      : typeof row.game_date === 'string'
+        ? row.game_date
+        : null
+
   return {
     id: row.id,
     title: String(row.title || ''),
     category: String(row.category || ''),
+    subcategory: row.subcategory ? String(row.subcategory) : null,
     end_date: String(row.end_date || ''),
     yes_pool: Number(row.yes_pool || 0),
     no_pool: Number(row.no_pool || 0),
     status: row.status ?? null,
     options,
     option_pools: optionPools,
+    metadata,
+    game_date: gameDate,
     created_at: row.created_at ? String(row.created_at) : undefined,
+  }
+}
+
+function formatGameDayHeading(isoDate: string): string {
+  try {
+    const d = new Date(`${isoDate}T12:00:00Z`)
+    return d.toLocaleDateString('fi-FI', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  } catch {
+    return isoDate
   }
 }
 
@@ -64,6 +93,7 @@ export function MarketsSection() {
   const [loading, setLoading] = useState(true)
   const [bettingMarketId, setBettingMarketId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [stakeByMarket, setStakeByMarket] = useState<Record<string, number>>({})
   const [marketBets, setMarketBets] = useState<Record<string, MarketBet[]>>({})
@@ -111,7 +141,11 @@ export function MarketsSection() {
             .select('*')
             .order('created_at', { ascending: false })
           if (fallback.data) {
-            setMarkets(fallback.data.map((m) => toLiveMarket(m as MarketRow)))
+            setMarkets(
+              fallback.data
+                .filter((m) => isOpenForBetting(m as MarketRow))
+                .map((m) => toLiveMarket(m as MarketRow))
+            )
           }
         } else {
           console.error('Failed to load markets:', marketsResult.error.message)
@@ -119,7 +153,7 @@ export function MarketsSection() {
       } else if (marketsResult.data) {
         setMarkets(
           marketsResult.data
-            .filter((m) => isOpenMarketStatus(m.status))
+            .filter((m) => isOpenForBetting(m as MarketRow))
             .map((m) => toLiveMarket(m as MarketRow))
         )
       }
@@ -177,6 +211,20 @@ export function MarketsSection() {
     if (!ready) return
     void loadData()
   }, [loadData, ready])
+
+  // Drop markets from the open list the moment first pitch / end_date passes
+  useEffect(() => {
+    if (!ready) return
+    const tick = () => {
+      const now = Date.now()
+      setMarkets((prev) => {
+        const next = prev.filter((m) => isOpenForBetting(m, now))
+        return next.length === prev.length ? prev : next
+      })
+    }
+    const id = window.setInterval(tick, 15_000)
+    return () => window.clearInterval(id)
+  }, [ready])
 
   // Live updates: resolution removes market; rollback / pool changes patch list
   useEffect(() => {
@@ -302,16 +350,92 @@ export function MarketsSection() {
 
   const categories = ['Kaikki', 'Politiikka', 'Talous', 'Urheilu', 'Viihde', 'Teknologia']
 
-  const filteredMarkets = useMemo(
-    () =>
-      selectedCategory === 'Kaikki'
-        ? markets
-        : markets.filter(
-            (market) =>
-              market.category?.toLowerCase() === selectedCategory.toLowerCase()
-          ),
-    [markets, selectedCategory]
-  )
+  const sportSubcategories = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of markets) {
+      if (m.category?.toLowerCase() === 'urheilu' && m.subcategory) {
+        set.add(m.subcategory)
+      }
+    }
+    if (!set.has('MLB')) set.add('MLB')
+    return ['Kaikki', ...Array.from(set).sort((a, b) => a.localeCompare(b, 'fi'))]
+  }, [markets])
+
+  const filteredMarkets = useMemo(() => {
+    let list = markets
+    if (selectedCategory !== 'Kaikki') {
+      list = list.filter(
+        (market) => market.category?.toLowerCase() === selectedCategory.toLowerCase()
+      )
+    }
+    if (
+      selectedCategory.toLowerCase() === 'urheilu' &&
+      selectedSubcategory &&
+      selectedSubcategory !== 'Kaikki'
+    ) {
+      list = list.filter(
+        (market) =>
+          market.subcategory?.toLowerCase() === selectedSubcategory.toLowerCase()
+      )
+    }
+    return list
+  }, [markets, selectedCategory, selectedSubcategory])
+
+  const mlbDayGroups = useMemo(() => {
+    const isMlbView =
+      selectedCategory.toLowerCase() === 'urheilu' &&
+      selectedSubcategory?.toLowerCase() === 'mlb'
+    if (!isMlbView) return null
+
+    const groups = new Map<string, typeof filteredMarkets>()
+    for (const m of filteredMarkets) {
+      const day =
+        m.game_date ||
+        (typeof m.metadata?.game_date === 'string' ? m.metadata.game_date : null) ||
+        'muut'
+      const arr = groups.get(day) || []
+      arr.push(m)
+      groups.set(day, arr)
+    }
+
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b))
+  }, [filteredMarkets, selectedCategory, selectedSubcategory])
+
+  const renderMarketCard = (market: (typeof markets)[number]) => {
+    const yesPool = Number(market.yes_pool || 0)
+    const noPool = Number(market.no_pool || 0)
+    const stake = getStake(market.id)
+    const options = market.options ?? [
+      { key: 'YES', label: 'Kyllä' },
+      { key: 'NO', label: 'Ei' },
+    ]
+    const priceHistory = buildPriceHistoryForMarket({
+      marketCreatedAt: market.created_at,
+      options,
+      bets: marketBets[market.id] ?? [],
+      yesPool,
+      noPool,
+      optionPools: market.option_pools,
+    })
+    const chartSeries = chartSeriesForOptions(options)
+
+    return (
+      <MarketCard
+        key={market.id}
+        market={market}
+        priceHistory={priceHistory}
+        chartSeries={chartSeries}
+        stake={stake}
+        balance={balance}
+        positions={userPositions[market.id] ?? []}
+        isBetting={bettingMarketId === market.id}
+        isLoggedIn={!!user}
+        onStakeChange={(value) => setStake(market.id, value)}
+        onBet={(choice) => handleBet(market.id, choice)}
+        onLogin={() => openAuth('login')}
+      />
+    )
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-x-hidden">
@@ -328,7 +452,10 @@ export function MarketsSection() {
         {categories.map((cat) => (
           <button
             key={cat}
-            onClick={() => setSelectedCategory(cat)}
+            onClick={() => {
+              setSelectedCategory(cat)
+              setSelectedSubcategory(cat === 'Urheilu' ? 'Kaikki' : null)
+            }}
             className={`shrink-0 rounded-full px-4 py-2 text-xs font-medium transition-colors ${
               selectedCategory === cat
                 ? 'bg-primary font-semibold text-primary-foreground'
@@ -340,6 +467,24 @@ export function MarketsSection() {
         ))}
       </div>
 
+      {selectedCategory === 'Urheilu' && (
+        <div className="mb-5 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {sportSubcategories.map((sub) => (
+            <button
+              key={sub}
+              onClick={() => setSelectedSubcategory(sub)}
+              className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                (selectedSubcategory || 'Kaikki') === sub
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border bg-card text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {sub === 'Kaikki' ? 'Kaikki urheilu' : sub}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           Ladataan kohteita...
@@ -348,43 +493,22 @@ export function MarketsSection() {
         <div className="py-12 text-center text-sm text-muted-foreground">
           Ei kohteita tässä kategoriassa.
         </div>
+      ) : mlbDayGroups ? (
+        <div className="flex flex-col gap-6">
+          {mlbDayGroups.map(([day, dayMarkets]) => (
+            <section key={day} className="flex flex-col gap-2.5">
+              <h3 className="text-sm font-semibold capitalize text-foreground">
+                {day === 'muut' ? 'Muut ottelut' : formatGameDayHeading(day)}
+              </h3>
+              <div className="grid w-full max-w-full grid-cols-1 gap-2.5 md:grid-cols-2">
+                {dayMarkets.map((market) => renderMarketCard(market))}
+              </div>
+            </section>
+          ))}
+        </div>
       ) : (
         <div className="grid w-full max-w-full grid-cols-1 gap-2.5 md:grid-cols-2">
-          {filteredMarkets.map((market) => {
-            const yesPool = Number(market.yes_pool || 0)
-            const noPool = Number(market.no_pool || 0)
-            const stake = getStake(market.id)
-            const options = market.options ?? [
-              { key: 'YES', label: 'Kyllä' },
-              { key: 'NO', label: 'Ei' },
-            ]
-            const priceHistory = buildPriceHistoryForMarket({
-              marketCreatedAt: market.created_at,
-              options,
-              bets: marketBets[market.id] ?? [],
-              yesPool,
-              noPool,
-              optionPools: market.option_pools,
-            })
-            const chartSeries = chartSeriesForOptions(options)
-
-            return (
-              <MarketCard
-                key={market.id}
-                market={market}
-                priceHistory={priceHistory}
-                chartSeries={chartSeries}
-                stake={stake}
-                balance={balance}
-                positions={userPositions[market.id] ?? []}
-                isBetting={bettingMarketId === market.id}
-                isLoggedIn={!!user}
-                onStakeChange={(value) => setStake(market.id, value)}
-                onBet={(choice) => handleBet(market.id, choice)}
-                onLogin={() => openAuth('login')}
-              />
-            )
-          })}
+          {filteredMarkets.map((market) => renderMarketCard(market))}
         </div>
       )}
     </div>

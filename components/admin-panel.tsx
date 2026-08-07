@@ -22,12 +22,13 @@ import {
   fetchResolvedMarkets,
   optionLabel,
   resolveMarket,
+  resolveSportsMarkets,
   rollbackResolution,
   updateMarket,
   type AdminMarket,
   type MarketResolution,
 } from '@/lib/admin'
-import { getPrices, formatPct } from '@/lib/amm'
+import { getPrices, pctIntsSummingTo100 } from '@/lib/amm'
 import { useAuth } from '@/lib/auth-context'
 import { formatFyrkka } from '@/lib/data'
 
@@ -61,6 +62,7 @@ export function AdminPanel() {
   const [optionLabels, setOptionLabels] = useState(['Kyllä', 'Ei'])
   const [optionsLocked, setOptionsLocked] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [resolvingSports, setResolvingSports] = useState(false)
 
   const isAdmin = Boolean(profile?.is_admin) || rpcAdmin === true
 
@@ -224,6 +226,23 @@ export function AdminPanel() {
 
     setActionOk(
       `Kohde ratkaistu: ${market ? optionLabel(market, outcome) : outcome}. Maksettu ${formatFyrkka(Math.round(result.resolution.total_payout))} Fyrkkaa ${result.resolution.winner_count} voittajalle.`
+    )
+    await refreshProfile()
+    await refresh()
+  }
+
+  const handleResolveSports = async () => {
+    setResolvingSports(true)
+    setActionError(null)
+    setActionOk(null)
+    const result = await resolveSportsMarkets()
+    setResolvingSports(false)
+    if (!result.ok) {
+      setActionError(result.error)
+      return
+    }
+    setActionOk(
+      `Urheilukohteet: ratkaistu ${result.resolved}, odottaa vielä ${result.pending}, epäonnistui ${result.failed}.`
     )
     await refreshProfile()
     await refresh()
@@ -502,9 +521,24 @@ export function AdminPanel() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">
-          Avoimet kohteet ({pending.length})
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">
+            Avoimet / odottavat ({pending.length})
+          </h2>
+          <button
+            type="button"
+            disabled={resolvingSports || loading}
+            onClick={() => void handleResolveSports()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
+          >
+            {resolvingSports ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Trophy className="size-3.5" />
+            )}
+            Ratkaise urheilukohteet
+          </button>
+        </div>
         {pending.length === 0 ? (
           <p className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
             Ei avoimia kohteita. Luo ensimmäinen yllä.
@@ -512,11 +546,17 @@ export function AdminPanel() {
         ) : (
           pending.map((market) => {
             const { yesPrice, noPrice } = getPrices(market.yes_pool, market.no_pool)
+            const displayPcts = pctIntsSummingTo100(
+              { YES: yesPrice, NO: noPrice },
+              ['YES', 'NO']
+            )
             const outcome = selectedOutcome[market.id]
             const endMs = market.end_date
               ? new Date(market.end_date).getTime()
               : null
             const ended = endMs === null || endMs <= Date.now()
+            const awaiting =
+              String(market.status || '').toLowerCase() === 'closed'
             const isBinary =
               market.options.length === 2 &&
               market.options.some((o) => o.key === 'YES') &&
@@ -536,11 +576,15 @@ export function AdminPanel() {
                           ? ` · päättyi ${new Date(market.end_date).toLocaleString('fi-FI')}`
                           : ` · päättyy ${new Date(market.end_date).toLocaleString('fi-FI')}`
                         : ' · ei päättymispäivää'}
-                      {!ended && (
+                      {awaiting ? (
+                        <span className="ml-1.5 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                          odottaa ratkaisua
+                        </span>
+                      ) : !ended ? (
                         <span className="ml-1.5 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                           vielä auki
                         </span>
-                      )}
+                      ) : null}
                     </p>
                     <h3 className="mt-1 text-sm font-semibold leading-snug">
                       {market.title}
@@ -553,11 +597,11 @@ export function AdminPanel() {
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         Markkinahinta:{' '}
                         <span className="text-[var(--yes)]">
-                          {formatPct(yesPrice)} {optionLabel(market, 'YES')}
+                          {displayPcts.YES}% {optionLabel(market, 'YES')}
                         </span>
                         {' · '}
                         <span className="text-[var(--no)]">
-                          {formatPct(noPrice)} {optionLabel(market, 'NO')}
+                          {displayPcts.NO}% {optionLabel(market, 'NO')}
                         </span>
                       </p>
                     )}
@@ -729,7 +773,7 @@ export function AdminPanel() {
                   <li key={res.id} className="px-4 py-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium text-foreground">
-                        {market?.title || res.market_id.slice(0, 8)}
+                        {market?.title || (res.market_id ? res.market_id.slice(0, 8) : '—')}
                       </p>
                       <span
                         className={
@@ -746,8 +790,17 @@ export function AdminPanel() {
                       {market
                         ? optionLabel(market, res.winning_option)
                         : res.winning_option}{' '}
-                      · admin{' '}
-                      <span className="font-mono">{res.resolved_by.slice(0, 8)}</span>
+                      ·{' '}
+                      {res.resolved_by
+                        ? (
+                            <>
+                              admin{' '}
+                              <span className="font-mono">
+                                {res.resolved_by.slice(0, 8)}
+                              </span>
+                            </>
+                          )
+                        : 'automaattinen'}
                     </p>
                   </li>
                 )

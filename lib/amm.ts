@@ -187,6 +187,51 @@ export function formatPct(price: number): string {
   return `${Math.round(price * 100)}%`
 }
 
+/**
+ * Round option probabilities to whole percents that always sum to `total` (default 100).
+ * Uses the largest-remainder method so UI never shows e.g. 48% + 53%.
+ */
+export function pctIntsSummingTo100(
+  pricesByKey: Record<string, number>,
+  keys: string[],
+  total = 100
+): Record<string, number> {
+  if (keys.length === 0) return {}
+
+  const raw = keys.map((k) => Math.max(0, Number(pricesByKey[k]) || 0))
+  const sum = raw.reduce((a, b) => a + b, 0)
+  const normalized =
+    sum > 0 ? raw.map((v) => v / sum) : keys.map(() => 1 / keys.length)
+
+  const floored = normalized.map((p) => Math.floor(p * total + 1e-12))
+  let remainder = total - floored.reduce((a, b) => a + b, 0)
+
+  const order = normalized
+    .map((p, i) => ({ i, frac: p * total - floored[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i)
+
+  const ints = [...floored]
+  for (let n = 0; n < order.length && remainder > 0; n++) {
+    ints[order[n].i] += 1
+    remainder -= 1
+  }
+  while (remainder < 0) {
+    let maxI = 0
+    for (let i = 1; i < ints.length; i++) {
+      if (ints[i] > ints[maxI]) maxI = i
+    }
+    if (ints[maxI] <= 0) break
+    ints[maxI] -= 1
+    remainder += 1
+  }
+
+  const out: Record<string, number> = {}
+  keys.forEach((k, i) => {
+    out[k] = ints[i]
+  })
+  return out
+}
+
 export function formatShares(shares: number): string {
   return shares.toLocaleString('fi-FI', {
     minimumFractionDigits: 2,

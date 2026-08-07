@@ -22,7 +22,7 @@ export type MarketResolution = {
   id: string
   market_id: string
   winning_option: string
-  resolved_by: string
+  resolved_by: string | null
   resolved_at: string
   total_payout: number
   winner_count: number
@@ -109,9 +109,9 @@ function sortPendingMarkets(markets: AdminMarket[]): AdminMarket[] {
   })
 }
 
-function isOpenStatus(status: string | null | undefined): boolean {
-  if (status == null || status === '') return true
-  return status.toLowerCase() === 'open'
+function isPendingResolutionStatus(status: string | null | undefined): boolean {
+  const s = (status || '').toLowerCase()
+  return s === 'open' || s === 'closed' || s === ''
 }
 
 function isResolvedStatus(status: string | null | undefined): boolean {
@@ -141,13 +141,13 @@ export async function fetchPendingMarkets(): Promise<AdminMarket[]> {
 
     return sortPendingMarkets(
       (fallback.data ?? [])
-        .filter((m) => isOpenStatus(m.status))
+        .filter((m) => isPendingResolutionStatus(m.status))
         .map(mapAdminMarket)
     )
   }
 
   return sortPendingMarkets(
-    (data ?? []).filter((m) => isOpenStatus(m.status)).map(mapAdminMarket)
+    (data ?? []).filter((m) => isPendingResolutionStatus(m.status)).map(mapAdminMarket)
   )
 }
 
@@ -268,6 +268,45 @@ export async function resolveMarket(
       winner_count: Number(data.winner_count || 0),
       loser_count: Number(data.loser_count || 0),
     },
+  }
+}
+
+/** Auto-resolve finished sports (MLB) from official results + pay winners. */
+export async function resolveSportsMarkets(): Promise<
+  | { ok: true; resolved: number; pending: number; failed: number }
+  | { ok: false; error: string }
+> {
+  const { data: sessionData } = await supabase.auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) {
+    return { ok: false, error: 'Kirjaudu sisään.' }
+  }
+
+  try {
+    const res = await fetch('/api/admin/resolve-sports', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string
+      resolved?: number
+      pending?: number
+      failed?: number
+    }
+    if (!res.ok) {
+      return { ok: false, error: body.error || `Virhe ${res.status}` }
+    }
+    return {
+      ok: true,
+      resolved: Number(body.resolved || 0),
+      pending: Number(body.pending || 0),
+      failed: Number(body.failed || 0),
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Urheilukohteiden ratkaisu epäonnistui',
+    }
   }
 }
 

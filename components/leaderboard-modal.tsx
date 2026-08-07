@@ -79,7 +79,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                 Tulostaulukko
               </h2>
               <p className="truncate text-xs text-muted-foreground">
-                Järjestys tuottoprosentin (ROI) mukaan
+                Pisteet: ROI × vetoja^1.04 · min. 50 vetoa
               </p>
             </div>
           </div>
@@ -102,7 +102,7 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
             <p className="py-10 text-center text-sm text-[var(--no)]">{error}</p>
           ) : rows.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              Ei vielä panostaneita pelaajia. Lyö vetoa, niin ROI näkyy tässä.
+              Ei vielä tuloksia. Tarvitset vähintään 50 vetoa päästäksesi listalle.
             </p>
           ) : (
             <table className="w-full max-w-full table-fixed text-left text-sm">
@@ -156,7 +156,9 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                               {row.name}
                             </p>
                             <p className="truncate text-[10px] text-muted-foreground">
-                              Panostettu {formatFyrkka(Math.round(row.totalStaked))} F
+                              {row.totalBets > 0
+                                ? `${row.totalBets} vetoa · ${formatFyrkka(Math.round(row.totalStaked))} F`
+                                : `Panostettu ${formatFyrkka(Math.round(row.totalStaked))} F`}
                             </p>
                           </div>
                         </div>

@@ -3,15 +3,17 @@
 import { useState } from 'react'
 import { LineChart, X } from 'lucide-react'
 import {
-  formatPct,
   formatShares,
   getOptionPrices,
   getPrices,
   isBinaryMarket,
+  pctIntsSummingTo100,
   quoteFixedOdds,
   toDisplayShares,
   type MarketOptionDef,
 } from '@/lib/amm'
+import { bettingClosesAtMs } from '@/lib/market-realtime'
+import { isYesNoChoiceMarket, optionVisualStyle } from '@/lib/option-styles'
 import { getPriceChange, type ChartSeries, type PricePoint } from '@/lib/price-history'
 import { MarketPriceChart } from '@/components/market-price-chart'
 
@@ -19,6 +21,7 @@ export type LiveMarket = {
   id: string
   title: string
   category: string
+  subcategory?: string | null
   end_date: string
   yes_pool: number
   no_pool: number
@@ -26,6 +29,8 @@ export type LiveMarket = {
   winning_option?: string | null
   options?: MarketOptionDef[]
   option_pools?: Record<string, number>
+  metadata?: Record<string, unknown> | null
+  game_date?: string | null
 }
 
 export type UserPosition = {
@@ -36,43 +41,17 @@ export type UserPosition = {
 
 const STAKE_PRESETS = [10, 25, 50, 100]
 
-const OPTION_STYLES = [
-  {
-    text: 'text-[var(--yes)]',
-    bg: 'bg-[var(--yes)]',
-    soft: 'bg-[var(--yes)]/18',
-    ring: 'ring-[var(--yes)]',
-    softRing: 'ring-[var(--yes)]/35',
-    fg: 'text-[var(--yes-foreground)]',
-  },
-  {
-    text: 'text-[var(--no)]',
-    bg: 'bg-[var(--no)]',
-    soft: 'bg-[var(--no)]/28',
-    ring: 'ring-[var(--no)]',
-    softRing: 'ring-[var(--no)]/55',
-    fg: 'text-[var(--no-foreground)]',
-  },
-  {
-    text: 'text-primary',
-    bg: 'bg-primary',
-    soft: 'bg-primary/12',
-    ring: 'ring-primary',
-    softRing: 'ring-primary/25',
-    fg: 'text-primary-foreground',
-  },
-  {
-    text: 'text-foreground',
-    bg: 'bg-foreground',
-    soft: 'bg-secondary',
-    ring: 'ring-foreground',
-    softRing: 'ring-border',
-    fg: 'text-background',
-  },
-]
-
-function optionStyle(index: number) {
-  return OPTION_STYLES[index % OPTION_STYLES.length]
+function formatEndDateTime(iso: string | null | undefined): string {
+  if (!iso) return 'Avoin'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'Avoin'
+  return d.toLocaleString('fi-FI', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export type MarketCardProps = {
@@ -102,7 +81,7 @@ export function MarketCard({
   onBet,
   onLogin,
 }: MarketCardProps) {
-  const [showChart, setShowChart] = useState(true)
+  const [showChart, setShowChart] = useState(false)
   const [pendingChoice, setPendingChoice] = useState<string | null>(null)
 
   const options: MarketOptionDef[] =
@@ -117,8 +96,26 @@ export function MarketCard({
         ]
 
   const binary = isBinaryMarket(options)
+  const yesNoUi = isYesNoChoiceMarket(options)
   const yesPool = Number(market.yes_pool || 0)
   const noPool = Number(market.no_pool || 0)
+  const closesAtMs = bettingClosesAtMs(market)
+  const bettingClosed = closesAtMs != null && closesAtMs <= Date.now()
+  const closesAtIso =
+    (typeof market.metadata?.game_start === 'string' && market.metadata.game_start) ||
+    market.end_date ||
+    null
+  const isGameClose =
+    typeof market.metadata?.game_start === 'string' || market.subcategory === 'MLB'
+  const closeLabel = (() => {
+    const when = formatEndDateTime(closesAtIso)
+    if (bettingClosed) {
+      return isGameClose ? `Ottelu alkoi ${when}` : `Sulkeutui ${when}`
+    }
+    return isGameClose
+      ? `Sulkeutuu ottelun alkaessa ${when}`
+      : `Sulkeutuu ${when}`
+  })()
   const binaryPrices = getPrices(yesPool, noPool)
   const multiPrices = getOptionPrices(options, market.option_pools)
 
@@ -126,11 +123,19 @@ export function MarketCard({
     ? { YES: binaryPrices.yesPrice, NO: binaryPrices.noPrice }
     : multiPrices
 
+  const displayPcts = pctIntsSummingTo100(
+    prices,
+    options.map((o) => o.key)
+  )
+
   const { deltaPct, direction } = getPriceChange(priceHistory)
   const leading = [...options].sort(
     (a, b) => (prices[b.key] ?? 0) - (prices[a.key] ?? 0)
   )[0]
-  const leadingPct = Math.round((prices[leading?.key] ?? 0) * 100)
+  const leadingPct = displayPcts[leading?.key] ?? 0
+
+  const styleFor = (opt: MarketOptionDef, index: number) =>
+    optionVisualStyle(options, index, opt)
 
   const spentByChoice = (key: string) =>
     positions
@@ -155,12 +160,14 @@ export function MarketCard({
   const oddsQuote = pendingChoice ? quoteFixedOdds(spotPrice, draftPot) : null
   const pendingLabel =
     options.find((o) => o.key === pendingChoice)?.label ?? pendingChoice ?? ''
-  const pendingStyle = optionStyle(
-    Math.max(
-      0,
-      options.findIndex((o) => o.key === pendingChoice)
-    )
+  const pendingIndex = Math.max(
+    0,
+    options.findIndex((o) => o.key === pendingChoice)
   )
+  const pendingOpt = options[pendingIndex]
+  const pendingStyle = pendingOpt
+    ? styleFor(pendingOpt, pendingIndex)
+    : optionVisualStyle(options, 0)
 
   const stakePanelOpen = pendingChoice !== null
   const hasPositions = positions.some((p) => p.amount > 0)
@@ -176,6 +183,7 @@ export function MarketCard({
   }
 
   const openStakePanel = (choice: string) => {
+    if (bettingClosed) return
     if (!isLoggedIn) {
       onLogin()
       return
@@ -199,13 +207,17 @@ export function MarketCard({
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 font-medium text-foreground">
-            {market.category || 'Yleinen'}
+            {market.subcategory
+              ? `${market.category || 'Yleinen'} · ${market.subcategory}`
+              : market.category || 'Yleinen'}
           </span>
-          <span className="truncate">
-            Päättyy{' '}
-            {market.end_date
-              ? new Date(market.end_date).toLocaleDateString('fi-FI')
-              : 'Avoin'}
+          {bettingClosed && (
+            <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 font-semibold text-muted-foreground">
+              Suljettu
+            </span>
+          )}
+          <span className="truncate" title={closesAtIso || undefined}>
+            {closeLabel}
           </span>
         </div>
         <button
@@ -227,12 +239,12 @@ export function MarketCard({
         {market.title}
       </h3>
 
-      {binary ? (
+      {yesNoUi ? (
         <div className="mt-2">
           <div className="mb-1 grid grid-cols-2 items-center gap-2 text-[11px] font-semibold">
             <span className="inline-flex min-w-0 items-center gap-1.5 text-[var(--yes)]">
               <span className="tabular-nums text-sm font-bold">
-                {Math.round((prices.YES ?? 0) * 100)}%
+                {displayPcts.YES ?? 0}%
               </span>
               <span className="truncate">
                 {options.find((o) => o.key === 'YES')?.label ?? 'Kyllä'}
@@ -246,7 +258,7 @@ export function MarketCard({
             </span>
             <span className="inline-flex min-w-0 items-center justify-end gap-1.5 text-[var(--no)]">
               <span className="tabular-nums text-sm font-bold">
-                {Math.round((prices.NO ?? 0) * 100)}%
+                {displayPcts.NO ?? 0}%
               </span>
               <span className="truncate">
                 {options.find((o) => o.key === 'NO')?.label ?? 'Ei'}
@@ -256,26 +268,50 @@ export function MarketCard({
           <div className="flex h-2 w-full overflow-hidden rounded-full bg-secondary">
             <div
               className="h-full bg-[var(--yes)] transition-all duration-500"
-              style={{ width: `${Math.round((prices.YES ?? 0) * 100)}%` }}
+              style={{ width: `${displayPcts.YES ?? 0}%` }}
             />
             <div
               className="h-full bg-[var(--no)] transition-all duration-500"
-              style={{ width: `${Math.round((prices.NO ?? 0) * 100)}%` }}
+              style={{ width: `${displayPcts.NO ?? 0}%` }}
             />
           </div>
         </div>
       ) : (
         <div className="mt-2 space-y-1.5">
-          <p className="text-[11px] text-muted-foreground">
-            Suosikki:{' '}
-            <span className="font-semibold text-foreground">
-              {leading?.label} {leadingPct}%
-            </span>
-          </p>
-          <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+          <div className="mb-1 grid grid-cols-2 items-center gap-2 text-[11px] font-semibold">
+            {options.length === 2 ? (
+              options.map((opt, index) => {
+                const style = styleFor(opt, index)
+                const pct = displayPcts[opt.key] ?? 0
+                return (
+                  <span
+                    key={opt.key}
+                    className={`inline-flex min-w-0 items-center gap-1.5 ${index === 1 ? 'justify-end' : ''} ${style.text}`}
+                  >
+                    <span className="tabular-nums text-sm font-bold">{pct}%</span>
+                    <span className="truncate">{opt.label}</span>
+                    {index === 0 && deltaPct !== 0 && (
+                      <span className="shrink-0 font-medium opacity-80">
+                        {direction === 'up' ? '▲' : '▼'}
+                        {Math.abs(deltaPct)}%
+                      </span>
+                    )}
+                  </span>
+                )
+              })
+            ) : (
+              <p className="col-span-2 text-[11px] text-muted-foreground">
+                Suosikki:{' '}
+                <span className="font-semibold text-foreground">
+                  {leading?.label} {leadingPct}%
+                </span>
+              </p>
+            )}
+          </div>
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-secondary">
             {options.map((opt, index) => {
-              const pct = Math.round((prices[opt.key] ?? 0) * 100)
-              const style = optionStyle(index)
+              const pct = displayPcts[opt.key] ?? 0
+              const style = styleFor(opt, index)
               return (
                 <div
                   key={opt.key}
@@ -324,29 +360,35 @@ export function MarketCard({
         }`}
       >
         {options.map((opt, index) => {
-          const style = optionStyle(index)
+          const style = styleFor(opt, index)
           const selected = pendingChoice === opt.key
-          const price = prices[opt.key] ?? 0
           return (
             <button
               key={opt.key}
               type="button"
               onClick={() => openStakePanel(opt.key)}
               aria-pressed={selected}
-              className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 truncate rounded-lg px-2 text-xs font-semibold ring-1 ring-inset transition-all ${
+              disabled={bettingClosed}
+              className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 truncate rounded-lg px-2 text-xs font-semibold ring-1 ring-inset transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                 selected
                   ? `${style.bg} ${style.fg} ${style.ring}`
                   : `${style.soft} ${style.text} ${style.softRing} hover:brightness-110`
               }`}
             >
-              <span className="tabular-nums">{formatPct(price)}</span>
+              <span className="tabular-nums">{displayPcts[opt.key] ?? 0}%</span>
               <span className="truncate">{opt.label}</span>
             </button>
           )
         })}
       </div>
 
-      {stakePanelOpen && pendingChoice && (
+      {bettingClosed && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Vedonlyönti suljettu — ottelu on alkanut.
+        </p>
+      )}
+
+      {!bettingClosed && stakePanelOpen && pendingChoice && (
         <div className="mt-2 w-full max-w-full space-y-2 overflow-hidden rounded-lg border border-border bg-secondary/40 p-2.5">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] font-semibold text-foreground">
@@ -463,7 +505,11 @@ export function MarketCard({
               </p>
               <p
                 className={
-                  oddsQuote.profit >= 0 ? 'text-[var(--yes)]' : 'text-[var(--no)]'
+                  oddsQuote.profit >= 0
+                    ? 'text-[var(--yes)]'
+                    : yesNoUi
+                      ? 'text-[var(--no)]'
+                      : 'text-muted-foreground'
                 }
               >
                 Puhdas voitto:{' '}

@@ -33,12 +33,12 @@ export function CommunitySidebar() {
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center gap-2">
           <Crown className="size-5 text-[oklch(0.8_0.15_85)]" />
-          <h2 className="text-sm font-semibold">Parhaat ennustajat (ROI)</h2>
+          <h2 className="text-sm font-semibold">Parhaat ennustajat</h2>
         </div>
         <ul className="mt-4 flex flex-col gap-3">
           {top.length === 0 ? (
             <li className="text-xs text-muted-foreground">
-              Ei vielä ROI-tuloksia. Lyö vetoja, niin lista täyttyy.
+              Ei vielä tuloksia. Min. 50 vetoa listalle.
             </li>
           ) : (
             top.map((user, index) => {

@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/mlb-import",
+      "schedule": "0 7,15 * * *"
+    },
+    {
+      "path": "/api/cron/mlb-odds",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/mlb-resolve",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

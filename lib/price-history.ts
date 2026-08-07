@@ -6,6 +6,7 @@ import {
   normalizeOptionPools,
   type MarketOptionDef,
 } from '@/lib/amm'
+import { optionVisualStyle } from '@/lib/option-styles'
 
 export type PricePoint = {
   timestamp: Date
@@ -27,19 +28,11 @@ export type ChartSeries = {
   colorClass: string
 }
 
-const SERIES_COLORS = [
-  'stroke-[var(--yes)] fill-[var(--yes)] text-[var(--yes)]',
-  'stroke-[var(--no)] fill-[var(--no)] text-[var(--no)]',
-  'stroke-primary fill-primary text-primary',
-  'stroke-foreground fill-foreground text-foreground',
-  'stroke-muted-foreground fill-muted-foreground text-muted-foreground',
-]
-
 export function chartSeriesForOptions(options: MarketOptionDef[]): ChartSeries[] {
   return options.map((opt, i) => ({
     key: opt.key.toUpperCase(),
     label: opt.label,
-    colorClass: SERIES_COLORS[i % SERIES_COLORS.length],
+    colorClass: optionVisualStyle(options, i, opt).chart,
   }))
 }
 
