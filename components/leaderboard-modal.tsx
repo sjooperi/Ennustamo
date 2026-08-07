@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Crown, Medal, Trophy, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { MarketWizardBadge } from '@/components/market-wizard-badge'
 import { formatFyrkka } from '@/lib/data'
 import { fetchLeaderboard, type LeaderboardRow } from '@/lib/leaderboard'
 import { formatRoi } from '@/lib/roi'
@@ -152,8 +153,11 @@ export function LeaderboardModal({ open, onClose }: LeaderboardModalProps) {
                             {row.initials}
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-foreground">
-                              {row.name}
+                            <p className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+                              <span className="truncate">{row.name}</span>
+                              {row.hasMarketWizardBadge ? (
+                                <MarketWizardBadge size="md" className="shrink-0" />
+                              ) : null}
                             </p>
                             <p className="truncate text-[10px] text-muted-foreground">
                               {row.totalBets > 0

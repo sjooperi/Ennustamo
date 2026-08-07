@@ -124,7 +124,7 @@ export function MarketsSection() {
   const [loading, setLoading] = useState(true)
   const [bettingMarketId, setBettingMarketId] = useState<string | null>(null)
   const [sellingMarketId, setSellingMarketId] = useState<string | null>(null)
-  const [selectedCategory, setSelectedCategory] = useState('Kaikki')
+  const [selectedCategory, setSelectedCategory] = useState('Suosituimmat')
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [stakeByMarket, setStakeByMarket] = useState<Record<string, number>>({})
@@ -468,8 +468,10 @@ export function MarketsSection() {
     void loadData()
   }
 
+  const POPULAR_TOP_N = 20
+
   const categories = [
-    'Kaikki',
+    'Suosituimmat',
     'Yhteisö',
     'Politiikka',
     'Talous',
@@ -492,12 +494,19 @@ export function MarketsSection() {
   const filteredMarkets = useMemo(() => {
     const topCommunity = topCommunityMarketIds(markets)
     let list = markets
-    if (selectedCategory.toLowerCase() === 'yhteisö') {
+    if (selectedCategory.toLowerCase() === 'suosituimmat') {
+      list = list
+        .filter((m) => isOpenForBetting(m))
+        .sort(
+          (a, b) => Number(b.total_volume || 0) - Number(a.total_volume || 0)
+        )
+        .slice(0, POPULAR_TOP_N)
+    } else if (selectedCategory.toLowerCase() === 'yhteisö') {
       list = list.filter((market) => isCommunityMarket(market))
       list = [...list].sort(
         (a, b) => Number(b.total_volume || 0) - Number(a.total_volume || 0)
       )
-    } else if (selectedCategory !== 'Kaikki') {
+    } else {
       const cat = selectedCategory.toLowerCase()
       list = list.filter((market) => {
         if (isCommunityMarket(market)) {
@@ -509,15 +518,13 @@ export function MarketsSection() {
       })
       // Non-community categories: only actively bettable
       list = list.filter((m) => isOpenForBetting(m))
-    } else {
-      list = list.filter((m) => isOpenForBetting(m))
     }
     if (
       selectedCategory.toLowerCase() === 'urheilu' &&
       selectedSubcategory &&
       selectedSubcategory !== 'Kaikki'
     ) {
-      // Keep top community sports in "Kaikki" only; sport subfilters are official listings
+      // Keep top community sports in Suosituimmat only; sport subfilters are official listings
       list = list.filter(
         (market) =>
           !isCommunityMarket(market) &&

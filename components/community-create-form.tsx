@@ -6,6 +6,7 @@ import {
   COMMUNITY_CREATOR_STAKE,
   COMMUNITY_MAX_DAILY,
   COMMUNITY_MAX_OPTIONS,
+  COMMUNITY_MONTHLY_CREATOR_REWARDS,
   COMMUNITY_RESOLVE_HOURS,
   COMMUNITY_TOP_CREATOR_REWARDS,
   COMMUNITY_TOPIC_CATEGORIES,
@@ -14,7 +15,11 @@ import {
 } from '@/lib/community'
 import { formatFyrkka } from '@/lib/data'
 
-const REWARD_SUMMARY = COMMUNITY_TOP_CREATOR_REWARDS.map(
+const WEEKLY_REWARD_SUMMARY = COMMUNITY_TOP_CREATOR_REWARDS.map(
+  (amount, i) => `${i + 1}. ${formatFyrkka(amount)} F`
+).join(' · ')
+
+const MONTHLY_REWARD_SUMMARY = COMMUNITY_MONTHLY_CREATOR_REWARDS.map(
   (amount, i) => `${i + 1}. ${formatFyrkka(amount)} F`
 ).join(' · ')
 
@@ -145,8 +150,9 @@ export function CommunityCreateForm({
           </button>
         </div>
         <p className="text-[11px] leading-snug text-muted-foreground">
-          Viiden suosituimman kohteen luojia palkitaan hyvästä kohteesta:{' '}
-          {REWARD_SUMMARY}.
+          Viikon top 5 volyymikohteen luojat: {WEEKLY_REWARD_SUMMARY}. Kuukauden
+          palkinnot 2× ({MONTHLY_REWARD_SUMMARY}), ja #1 saa badgen Kuukauden
+          markkinavelho.
         </p>
         <p className="text-[11px] leading-snug text-muted-foreground">
           Sääntöjen rikkominen (esim. harhaanjohtava kohde tai ratkaisematta jättäminen)
@@ -183,8 +189,8 @@ export function CommunityCreateForm({
       </div>
 
       <p className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-        Viiden suosituimman kohteen luojia palkitaan hyvästä kohteesta:{' '}
-        {REWARD_SUMMARY}.
+        Viikon top 5: {WEEKLY_REWARD_SUMMARY}. Kuukauden top 5 (2×):{' '}
+        {MONTHLY_REWARD_SUMMARY}. Kuukauden #1 saa badgen Kuukauden markkinavelho.
       </p>
 
       <p className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">

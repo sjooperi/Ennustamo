@@ -11,6 +11,7 @@ export type Profile = {
   balance: number
   fyrkat: number
   is_admin: boolean
+  badges: string[]
 }
 
 export const STARTING_BALANCE = 1000
@@ -24,6 +25,7 @@ type ProfileRow = {
   balance?: number | string | null
   fyrkat?: number | string | null
   is_admin?: boolean | null
+  badges?: string[] | null
 }
 
 function displayNameFromUser(user: User): string {
@@ -57,6 +59,7 @@ function mapRow(row: ProfileRow, user?: User): Profile {
     balance,
     fyrkat,
     is_admin: Boolean(row.is_admin),
+    badges: Array.isArray(row.badges) ? row.badges.filter(Boolean) : [],
   }
 }
 
@@ -64,7 +67,9 @@ function mapRow(row: ProfileRow, user?: User): Profile {
 export async function ensureProfileForUser(user: User): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, display_name, username, avatar_url, balance, fyrkat, is_admin')
+    .select(
+      'id, email, display_name, username, avatar_url, balance, fyrkat, is_admin, badges'
+    )
     .eq('id', user.id)
     .maybeSingle()
 
@@ -73,6 +78,7 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
       error.message?.includes('email') ||
       error.message?.includes('display_name') ||
       error.message?.includes('is_admin') ||
+      error.message?.includes('badges') ||
       error.code === '42703'
     ) {
       const fallback = await supabase
@@ -116,14 +122,18 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
   const { data: created, error: insertError } = await supabase
     .from('profiles')
     .insert(payload)
-    .select('id, email, display_name, username, avatar_url, balance, fyrkat, is_admin')
+    .select(
+      'id, email, display_name, username, avatar_url, balance, fyrkat, is_admin, badges'
+    )
     .single()
 
   if (insertError) {
     if (insertError.code === '23505') {
       const { data: retry } = await supabase
         .from('profiles')
-        .select('id, email, display_name, username, avatar_url, balance, fyrkat, is_admin')
+        .select(
+          'id, email, display_name, username, avatar_url, balance, fyrkat, is_admin, badges'
+        )
         .eq('id', user.id)
         .maybeSingle()
       if (retry) return mapRow(retry, user)
@@ -164,6 +174,7 @@ export async function ensureProfileForUser(user: User): Promise<Profile | null> 
       balance: STARTING_BALANCE,
       fyrkat: STARTING_BALANCE,
       is_admin: false,
+      badges: [],
     }
   }
 

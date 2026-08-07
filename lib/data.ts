@@ -17,8 +17,8 @@ export type Market = {
   createdOrder: number
 }
 
-export const CATEGORIES: (Category | 'Kaikki')[] = [
-  'Kaikki',
+export const CATEGORIES: (Category | 'Suosituimmat')[] = [
+  'Suosituimmat',
   'Politiikka',
   'Talous',
   'Urheilu',

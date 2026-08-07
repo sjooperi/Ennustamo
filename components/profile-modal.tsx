@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { MarketWizardBadge } from '@/components/market-wizard-badge'
 import { updateUsernameForUser, type Profile } from '@/lib/auth-profile'
+import {
+  MARKET_WIZARD_BADGE,
+  MARKET_WIZARD_BADGE_LABEL,
+} from '@/lib/community'
 import {
   formatShortRealName,
   resolvePublicName,
@@ -74,6 +79,9 @@ export function ProfileModal({
     displayName: profile?.display_name,
     email: profile?.email,
   })
+  const hasWizardBadge = Boolean(
+    profile?.badges?.includes(MARKET_WIZARD_BADGE)
+  )
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -169,6 +177,20 @@ export function ProfileModal({
                 {preview}
               </span>
             </div>
+
+            {hasWizardBadge ? (
+              <div className="flex items-start gap-2.5 rounded-xl border border-[oklch(0.75_0.12_85)]/30 bg-[oklch(0.22_0.03_70)]/40 px-3 py-2.5">
+                <MarketWizardBadge size="lg" showMark />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    {MARKET_WIZARD_BADGE_LABEL}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                    Kuukauden volyymikärjen yhteisökohteen luoja.
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             {error && (
               <p role="alert" className="text-sm text-[var(--no)]">

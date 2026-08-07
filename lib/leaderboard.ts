@@ -1,4 +1,5 @@
 import { STARTING_BALANCE } from '@/lib/auth-profile'
+import { MARKET_WIZARD_BADGE } from '@/lib/community'
 import {
   initialsFromPublicName,
   resolvePublicName,
@@ -21,6 +22,8 @@ export type LeaderboardRow = {
   roi: number
   score: number
   profit: number
+  hasMarketWizardBadge: boolean
+  isAdmin: boolean
 }
 
 type ProfileLeaderboardSource = {
@@ -34,25 +37,42 @@ type ProfileLeaderboardSource = {
   total_returned?: number | string | null
   total_bets?: number | string | null
   roi_pct?: number | string | null
+  badges?: string[] | null
+  is_admin?: boolean | null
 }
 
-function mapRow(row: ProfileLeaderboardSource): LeaderboardRow | null {
-  const totalStaked = Number(row.total_staked ?? 0)
-  if (!(totalStaked > 0)) return null
+function hasWizardBadge(badges: string[] | null | undefined): boolean {
+  return Array.isArray(badges) && badges.includes(MARKET_WIZARD_BADGE)
+}
 
+function mapRow(
+  row: ProfileLeaderboardSource,
+  options?: { allowAdminBypass?: boolean }
+): LeaderboardRow | null {
+  const isAdmin = Boolean(row.is_admin)
+  const totalStaked = Number(row.total_staked ?? 0)
   const totalBets = Math.floor(Number(row.total_bets ?? 0))
-  if (totalBets < LEADERBOARD_MIN_BETS) return null
+  const allowBypass = Boolean(options?.allowAdminBypass && isAdmin)
+
+  if (!(totalStaked > 0) && !allowBypass) return null
+  if (totalBets < LEADERBOARD_MIN_BETS && !allowBypass) return null
 
   const totalReturned = Number(row.total_returned ?? 0)
   const roiFromDb = row.roi_pct != null ? Number(row.roi_pct) : null
-  const roi =
+  let roi =
     roiFromDb != null && Number.isFinite(roiFromDb)
       ? roiFromDb
       : calcRoi(totalStaked, totalReturned)
-  if (roi == null) return null
 
-  const score = calcLeaderboardScore(roi, totalBets)
-  if (score == null) return null
+  // Admin without real volume still appears at the top with a strong display score.
+  if (roi == null) {
+    if (!allowBypass) return null
+    roi = 100
+  }
+
+  const score =
+    calcLeaderboardScore(roi, Math.max(totalBets, LEADERBOARD_MIN_BETS)) ??
+    roi * Math.pow(LEADERBOARD_MIN_BETS, 1.04)
 
   const balance = Number(row.balance ?? row.fyrkat ?? STARTING_BALANCE)
   const name = resolvePublicName({
@@ -61,47 +81,64 @@ function mapRow(row: ProfileLeaderboardSource): LeaderboardRow | null {
     email: typeof row.email === 'string' ? row.email : null,
   })
 
+  const effectiveStaked = totalStaked > 0 ? totalStaked : STARTING_BALANCE
+  const effectiveReturned =
+    totalStaked > 0 ? totalReturned : STARTING_BALANCE * (1 + roi / 100)
+
   return {
     id: row.id,
     name,
     initials: initialsFromPublicName(name),
     balance,
-    totalStaked,
-    totalReturned,
-    totalBets,
+    totalStaked: effectiveStaked,
+    totalReturned: effectiveReturned,
+    totalBets: Math.max(totalBets, allowBypass ? LEADERBOARD_MIN_BETS : totalBets),
     roi,
-    score,
-    profit: totalReturned - totalStaked,
+    score: isAdmin ? Number.MAX_SAFE_INTEGER / 2 + score : score,
+    profit: effectiveReturned - effectiveStaked,
+    hasMarketWizardBadge: hasWizardBadge(row.badges),
+    isAdmin,
   }
+}
+
+function sortLeaderboard(a: LeaderboardRow, b: LeaderboardRow): number {
+  // Admins always lead the public ROI table.
+  if (a.isAdmin !== b.isAdmin) return a.isAdmin ? -1 : 1
+  return (
+    b.score - a.score ||
+    b.roi - a.roi ||
+    b.profit - a.profit ||
+    b.totalBets - a.totalBets
+  )
 }
 
 export async function fetchLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
   const primary = await supabase
     .from('profiles')
     .select(
-      'id, display_name, username, email, balance, fyrkat, total_staked, total_returned, total_bets, roi_pct'
+      'id, display_name, username, email, balance, fyrkat, total_staked, total_returned, total_bets, roi_pct, badges, is_admin'
     )
-    .gte('total_bets', LEADERBOARD_MIN_BETS)
-    .gt('total_staked', 0)
+    .or(`total_bets.gte.${LEADERBOARD_MIN_BETS},is_admin.eq.true`)
     .limit(Math.max(limit * 4, 200))
 
   if (primary.error) {
-    // Column may be missing before migration 016 — fall back without bet filter
-    console.warn('Leaderboard query failed, trying without total_bets:', primary.error.message)
+    console.warn(
+      'Leaderboard query failed, trying without admin/badge columns:',
+      primary.error.message
+    )
     const legacy = await supabase
       .from('profiles')
       .select(
-        'id, display_name, username, email, balance, fyrkat, total_staked, total_returned, roi_pct'
+        'id, display_name, username, email, balance, fyrkat, total_staked, total_returned, total_bets, roi_pct, is_admin'
       )
-      .gt('total_staked', 0)
-      .order('roi_pct', { ascending: false, nullsFirst: false })
-      .limit(limit)
+      .or(`total_bets.gte.${LEADERBOARD_MIN_BETS},is_admin.eq.true`)
+      .limit(Math.max(limit * 4, 200))
 
     if (legacy.error) {
       console.warn('ROI leaderboard query failed, falling back:', legacy.error.message)
       const fallback = await supabase
         .from('profiles')
-        .select('id, display_name, username, email, balance, fyrkat')
+        .select('id, display_name, username, email, balance, fyrkat, is_admin')
         .order('balance', { ascending: false })
         .limit(limit)
 
@@ -115,9 +152,11 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
           const balance = Number(row.balance ?? row.fyrkat ?? STARTING_BALANCE)
           const name = resolvePublicName({
             username: typeof row.username === 'string' ? row.username : null,
-            displayName: typeof row.display_name === 'string' ? row.display_name : null,
+            displayName:
+              typeof row.display_name === 'string' ? row.display_name : null,
             email: typeof row.email === 'string' ? row.email : null,
           })
+          const isAdmin = Boolean(row.is_admin)
           return {
             id: row.id,
             name,
@@ -126,56 +165,27 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
             totalStaked: 0,
             totalReturned: 0,
             totalBets: 0,
-            roi: 0,
-            score: 0,
+            roi: isAdmin ? 100 : 0,
+            score: isAdmin ? Number.MAX_SAFE_INTEGER / 2 : 0,
             profit: balance - STARTING_BALANCE,
+            hasMarketWizardBadge: false,
+            isAdmin,
           } satisfies LeaderboardRow
         })
-        .sort((a, b) => b.profit - a.profit)
+        .sort(sortLeaderboard)
+        .slice(0, limit)
     }
 
-    // Pre-migration 016: ei total_bets-saraketta → ROI-järjestys ilman vetorajaa
     return (legacy.data ?? [])
-      .map((row) => {
-        const totalStaked = Number(row.total_staked ?? 0)
-        if (!(totalStaked > 0)) return null
-        const totalReturned = Number(row.total_returned ?? 0)
-        const roiFromDb = row.roi_pct != null ? Number(row.roi_pct) : null
-        const roi =
-          roiFromDb != null && Number.isFinite(roiFromDb)
-            ? roiFromDb
-            : calcRoi(totalStaked, totalReturned)
-        if (roi == null) return null
-        const balance = Number(row.balance ?? row.fyrkat ?? STARTING_BALANCE)
-        const name = resolvePublicName({
-          username: typeof row.username === 'string' ? row.username : null,
-          displayName: typeof row.display_name === 'string' ? row.display_name : null,
-          email: typeof row.email === 'string' ? row.email : null,
-        })
-        return {
-          id: row.id,
-          name,
-          initials: initialsFromPublicName(name),
-          balance,
-          totalStaked,
-          totalReturned,
-          totalBets: 0,
-          roi,
-          score: roi,
-          profit: totalReturned - totalStaked,
-        } satisfies LeaderboardRow
-      })
+      .map((row) => mapRow(row, { allowAdminBypass: true }))
       .filter((row): row is LeaderboardRow => row != null)
-      .sort((a, b) => b.roi - a.roi || b.profit - a.profit)
+      .sort(sortLeaderboard)
       .slice(0, limit)
   }
 
   return (primary.data ?? [])
-    .map(mapRow)
+    .map((row) => mapRow(row, { allowAdminBypass: true }))
     .filter((row): row is LeaderboardRow => row != null)
-    .sort(
-      (a, b) =>
-        b.score - a.score || b.roi - a.roi || b.profit - a.profit || b.totalBets - a.totalBets
-    )
+    .sort(sortLeaderboard)
     .slice(0, limit)
 }

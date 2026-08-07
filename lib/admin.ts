@@ -346,6 +346,17 @@ export function optionLabel(
   return key
 }
 
+export async function runAdminCreatorRewardsTest(): Promise<
+  { ok: true; credited: number } | { ok: false; error: string }
+> {
+  const { data, error } = await supabase.rpc('admin_test_creator_rewards')
+  if (error) {
+    return { ok: false, error: translateAdminError(error.message) }
+  }
+  const payload = (data || {}) as { credited?: number }
+  return { ok: true, credited: Number(payload.credited || 0) }
+}
+
 export function translateAdminError(message: string): string {
   if (message.includes('UNAUTHORIZED')) return 'Kirjaudu sisään.'
   if (message.includes('FORBIDDEN')) return 'Ei ylläpito-oikeuksia.'
@@ -368,9 +379,10 @@ export function translateAdminError(message: string): string {
   if (
     message.includes('admin_update_market') ||
     message.includes('admin_create_market') ||
+    message.includes('admin_test_creator_rewards') ||
     message.includes('Could not find')
   ) {
-    return 'Toiminto puuttuu tietokannasta. Aja migraatiot 011–013.'
+    return 'Toiminto puuttuu tietokannasta. Aja migraatiot (viimeisin: 026).'
   }
   return message
 }

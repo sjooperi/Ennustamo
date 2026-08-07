@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { Crown, MessageSquare, TrendingUp } from 'lucide-react'
 import { LeaderboardModal } from '@/components/leaderboard-modal'
+import { MarketWizardBadge } from '@/components/market-wizard-badge'
+import { PopularCreatorsPanel } from '@/components/popular-creators-panel'
 import { DISCUSSIONS } from '@/lib/data'
 import { fetchLeaderboard, type LeaderboardRow } from '@/lib/leaderboard'
 import { formatRoi } from '@/lib/roi'
@@ -54,7 +56,12 @@ export function CommunitySidebar() {
                     {user.initials}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{user.name}</p>
+                    <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                      <span className="truncate">{user.name}</span>
+                      {user.hasMarketWizardBadge ? (
+                        <MarketWizardBadge size="md" className="shrink-0" />
+                      ) : null}
+                    </p>
                     <p className="truncate text-xs text-muted-foreground">
                       Tulos {user.profit > 0 ? '+' : ''}
                       {Math.round(user.profit)} F
@@ -81,6 +88,8 @@ export function CommunitySidebar() {
           Näytä koko tulostaulukko
         </button>
       </section>
+
+      <PopularCreatorsPanel />
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center gap-2">

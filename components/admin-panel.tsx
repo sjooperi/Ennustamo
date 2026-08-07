@@ -24,6 +24,7 @@ import {
   resolveMarket,
   resolveSportsMarkets,
   rollbackResolution,
+  runAdminCreatorRewardsTest,
   updateMarket,
   type AdminMarket,
   type MarketResolution,
@@ -64,6 +65,7 @@ export function AdminPanel() {
   const [optionsLocked, setOptionsLocked] = useState(false)
   const [saving, setSaving] = useState(false)
   const [resolvingSports, setResolvingSports] = useState(false)
+  const [testingRewards, setTestingRewards] = useState(false)
 
   const isAdmin = Boolean(profile?.is_admin) || rpcAdmin === true
 
@@ -271,6 +273,30 @@ export function AdminPanel() {
     await refresh()
   }
 
+  const handleTestCreatorRewards = async () => {
+    const ok = window.confirm(
+      'Simuloi kaikki viikko- ja kuukausipalkinnot (+badge) tälle admin-tilille? Saldo kasvaa 1575 F.'
+    )
+    if (!ok) return
+
+    setTestingRewards(true)
+    setActionError(null)
+    setActionOk(null)
+
+    const result = await runAdminCreatorRewardsTest()
+    setTestingRewards(false)
+
+    if (!result.ok) {
+      setActionError(result.error)
+      return
+    }
+
+    setActionOk(
+      `Testipalkinnot jaettu: +${formatFyrkka(Math.round(result.credited))} F, 10 ilmoitusta ja Kuukauden markkinavelho -badge.`
+    )
+    await refreshProfile()
+  }
+
   const handleRollback = async (resolutionId: string, marketTitle: string) => {
     const ok = window.confirm(
       `Peruuta ratkaisu kohteelle "${marketTitle}"? Voittajien saldot vähennetään ja kohde avataan uudelleen.`
@@ -390,6 +416,33 @@ export function AdminPanel() {
           {actionOk}
         </div>
       )}
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              Yhteisöpalkinnot (testi)
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Myöntää adminille kaikki viikon (525 F) ja kuukauden (1050 F)
+              top 5 -palkinnot, ilmoitukset sekä Kuukauden markkinavelho -badgen.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleTestCreatorRewards()}
+            disabled={testingRewards}
+            className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            {testingRewards ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Trophy className="size-3.5" />
+            )}
+            Voita kaikki palkinnot
+          </button>
+        </div>
+      </section>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

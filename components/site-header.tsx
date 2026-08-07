@@ -1,11 +1,17 @@
 'use client'
 
-import { Bell, Coins, LogOut, Menu, Search, Shield, Trophy, TrendingUp, UserRound } from 'lucide-react'
+import { Coins, LogOut, Menu, Search, Shield, Trophy, TrendingUp, UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { LeaderboardModal } from '@/components/leaderboard-modal'
+import { MarketWizardBadge } from '@/components/market-wizard-badge'
+import { NotificationsMenu } from '@/components/notifications-menu'
 import { ProfileModal } from '@/components/profile-modal'
 import { useAuth } from '@/lib/auth-context'
+import {
+  MARKET_WIZARD_BADGE,
+  MARKET_WIZARD_BADGE_LABEL,
+} from '@/lib/community'
 import { formatFyrkka } from '@/lib/data'
 import {
   initialsFromPublicName,
@@ -135,23 +141,25 @@ export function SiteHeader() {
                   </span>
                 </div>
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative hidden size-9 rounded-xl sm:inline-flex"
-                  aria-label="Ilmoitukset"
-                >
-                  <Bell className="size-5" />
-                </Button>
+                <NotificationsMenu />
 
                 <button
                   type="button"
-                  title={`${publicName} · muokkaa profiilia`}
+                  title={
+                    profile?.badges?.includes(MARKET_WIZARD_BADGE)
+                      ? `${publicName} · ${MARKET_WIZARD_BADGE_LABEL}`
+                      : `${publicName} · muokkaa profiilia`
+                  }
                   onClick={openProfile}
                   aria-label="Avaa profiili"
-                  className="grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.6_0.18_265)] text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                  className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.6_0.18_265)] text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                 >
                   {initialsFromPublicName(publicName)}
+                  {profile?.badges?.includes(MARKET_WIZARD_BADGE) ? (
+                    <span className="absolute -right-1.5 -bottom-1.5 rounded-full ring-2 ring-background">
+                      <MarketWizardBadge size="md" />
+                    </span>
+                  ) : null}
                 </button>
 
                 <Button
