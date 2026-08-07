@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Sparkles, Trophy } from 'lucide-react'
-import { MarketWizardBadge } from '@/components/market-wizard-badge'
+import { Sparkles } from 'lucide-react'
+import { UserBadges } from '@/components/user-badges'
 import {
   fetchCreatorRewardAwards,
-  type CreatorRewardPeriodGroup,
+  type CreatorRewardAward,
 } from '@/lib/creator-rewards'
 import { formatFyrkka } from '@/lib/data'
 
@@ -19,21 +19,23 @@ type Tab = 'week' | 'month'
 
 export function PopularCreatorsPanel() {
   const [tab, setTab] = useState<Tab>('week')
-  const [groups, setGroups] = useState<CreatorRewardPeriodGroup[]>([])
+  const [awards, setAwards] = useState<CreatorRewardAward[]>([])
+  const [periodLabel, setPeriodLabel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const rows = await fetchCreatorRewardAwards({
+      const groups = await fetchCreatorRewardAwards({
         kind: tab,
-        limitPeriods: 6,
-        // Include admin test awards so the UI can be verified end-to-end.
-        includeTests: true,
+        limitPeriods: 1,
+        includeTests: false,
       })
       if (!cancelled) {
-        setGroups(rows)
+        const latest = groups[0]
+        setAwards(latest?.awards ?? [])
+        setPeriodLabel(latest?.label ?? null)
         setLoading(false)
       }
     })()
@@ -46,11 +48,8 @@ export function PopularCreatorsPanel() {
     <section className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center gap-2">
         <Sparkles className="size-5 text-primary" />
-        <h2 className="text-sm font-semibold">Viikon / kuukauden suositut</h2>
+        <h2 className="text-sm font-semibold">Suosituimpien kohteiden luojat</h2>
       </div>
-      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-        Eniten volyymia keränneiden yhteisökohteiden luojat palkitaan automaattisesti.
-      </p>
 
       <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-secondary/60 p-1">
         <button
@@ -77,67 +76,54 @@ export function PopularCreatorsPanel() {
         </button>
       </div>
 
-      <div className="mt-4 space-y-4">
-        {loading ? (
-          <p className="text-xs text-muted-foreground">Ladataan…</p>
-        ) : groups.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Ei vielä {tab === 'week' ? 'viikon' : 'kuukauden'} voittajia. Lista täyttyy
-            automaattisesti palkintojen jaon jälkeen.
-          </p>
-        ) : (
-          groups.map((group) => (
-            <div key={`${group.periodKind}:${group.periodStart}`}>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-foreground capitalize">
-                  {group.label}
-                  {group.awards.some((a) => a.isTest) ? (
-                    <span className="ml-1.5 text-[10px] font-medium text-muted-foreground">
-                      (testi)
-                    </span>
-                  ) : null}
+      {periodLabel ? (
+        <p className="mt-2 text-[11px] text-muted-foreground capitalize">
+          {periodLabel}
+        </p>
+      ) : null}
+
+      {loading ? (
+        <p className="mt-4 text-xs text-muted-foreground">Ladataan…</p>
+      ) : awards.length === 0 ? (
+        <p className="mt-4 text-xs text-muted-foreground">
+          Ei vielä {tab === 'week' ? 'viikon' : 'kuukauden'} voittajia. Lista
+          täyttyy automaattisesti palkintojen jaon jälkeen.
+        </p>
+      ) : (
+        <ul className="mt-4 flex flex-col gap-3">
+          {awards.map((award) => (
+            <li key={award.id} className="flex items-center gap-3">
+              <span
+                className={`grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                  RANK_STYLES[award.rank - 1] ?? 'bg-secondary text-foreground'
+                }`}
+              >
+                {award.rank}
+              </span>
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold text-foreground">
+                {award.creatorInitials}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                  <span className="truncate">{award.creatorName}</span>
+                  <UserBadges
+                    size="md"
+                    isOracle={award.isOracle}
+                    isTopPredictor={award.isTopPredictor}
+                    hasMarketWizardBadge={award.hasMarketWizardBadge}
+                  />
                 </p>
-                <Trophy className="size-3.5 text-muted-foreground" />
+                <p className="truncate text-xs text-muted-foreground">
+                  {award.marketTitle || 'Yhteisökohde'}
+                </p>
               </div>
-              <ul className="flex flex-col gap-2.5">
-                {group.awards.map((award) => (
-                  <li key={award.id} className="flex items-start gap-2.5">
-                    <span
-                      className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
-                        RANK_STYLES[award.rank - 1] ?? 'bg-secondary text-foreground'
-                      }`}
-                    >
-                      {award.rank}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{award.creatorName}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {award.marketTitle || 'Yhteisökohde'}
-                      </p>
-                      {award.badgeGranted ? (
-                        <span className="mt-0.5 inline-flex items-center gap-1">
-                          <MarketWizardBadge size="sm" />
-                          <span className="text-[10px] font-semibold text-[oklch(0.75_0.12_85)]">
-                            MV
-                          </span>
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="font-mono text-xs font-semibold tabular-nums text-primary">
-                        +{formatFyrkka(Math.round(award.rewardAmount))} F
-                      </p>
-                      <p className="text-[10px] text-muted-foreground tabular-nums">
-                        {formatFyrkka(Math.round(award.volume))} F vol.
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
-      </div>
+              <span className="inline-flex shrink-0 font-mono text-sm font-semibold tabular-nums text-primary">
+                +{formatFyrkka(Math.round(award.rewardAmount))} F
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

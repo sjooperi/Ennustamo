@@ -99,6 +99,37 @@ export function getOptionPrices(
   return prices
 }
 
+/**
+ * Total AMM pool liquidity in Fyrkka (sum of option pools).
+ * Binary: yes_pool + no_pool. Multi: sum(option_pools).
+ * No house top-ups — only seed + net traded volume in the pools.
+ */
+export function getMarketLiquidity(input: {
+  options?: MarketOptionDef[] | null
+  yesPool?: number | null
+  noPool?: number | null
+  optionPools?: Record<string, number> | null
+}): number {
+  const options =
+    input.options && input.options.length >= 2
+      ? input.options
+      : [
+          { key: 'YES', label: 'Kyllä' },
+          { key: 'NO', label: 'Ei' },
+        ]
+
+  if (isBinaryMarket(options)) {
+    const { yesPool, noPool } = normalizePools(
+      Number(input.yesPool || 0),
+      Number(input.noPool || 0)
+    )
+    return yesPool + noPool
+  }
+
+  const normalized = normalizeOptionPools(options, input.optionPools)
+  return Object.values(normalized).reduce((s, v) => s + v, 0)
+}
+
 export function quoteFixedOdds(
   price01: number,
   stake: number

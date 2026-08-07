@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MarketWizardBadge } from '@/components/market-wizard-badge'
+import { OracleBadge, ORACLE_BADGE_LABEL } from '@/components/oracle-badge'
+import {
+  TopPredictorBadge,
+  TOP_PREDICTOR_BADGE_LABEL,
+} from '@/components/top-predictor-badge'
 import { updateUsernameForUser, type Profile } from '@/lib/auth-profile'
 import {
   MARKET_WIZARD_BADGE,
@@ -19,6 +24,8 @@ type ProfileModalProps = {
   onClose: () => void
   profile: Profile | null
   userId: string | null
+  isTopPredictor?: boolean
+  isOracle?: boolean
   onSaved: () => Promise<void> | void
 }
 
@@ -27,6 +34,8 @@ export function ProfileModal({
   onClose,
   profile,
   userId,
+  isTopPredictor = false,
+  isOracle = false,
   onSaved,
 }: ProfileModalProps) {
   const [username, setUsername] = useState('')
@@ -177,6 +186,34 @@ export function ProfileModal({
                 {preview}
               </span>
             </div>
+
+            {isOracle ? (
+              <div className="flex items-start gap-2.5 rounded-xl border border-[oklch(0.78_0.06_250)]/35 bg-[oklch(0.16_0.04_250)]/50 px-3 py-2.5">
+                <OracleBadge size="lg" showMark />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    {ORACLE_BADGE_LABEL}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                    Kaikkien aikojen ennustaja (min. 50 ratkaistua vetoa).
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {isTopPredictor ? (
+              <div className="flex items-start gap-2.5 rounded-xl border border-[oklch(0.78_0.04_250)]/35 bg-[oklch(0.2_0.04_250)]/35 px-3 py-2.5">
+                <TopPredictorBadge size="lg" showMark />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    {TOP_PREDICTOR_BADGE_LABEL}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                    Tämän kuun tuottoykkönen tulostaulukossa.
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             {hasWizardBadge ? (
               <div className="flex items-start gap-2.5 rounded-xl border border-[oklch(0.75_0.12_85)]/30 bg-[oklch(0.22_0.03_70)]/40 px-3 py-2.5">

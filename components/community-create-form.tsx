@@ -150,7 +150,7 @@ export function CommunityCreateForm({
           </button>
         </div>
         <p className="text-[11px] leading-snug text-muted-foreground">
-          Viikon top 5 volyymikohteen luojat: {WEEKLY_REWARD_SUMMARY}. Kuukauden
+          Viikon top 5 suosituimman kohteen luojat: {WEEKLY_REWARD_SUMMARY}. Kuukauden
           palkinnot 2× ({MONTHLY_REWARD_SUMMARY}), ja #1 saa badgen Kuukauden
           markkinavelho.
         </p>

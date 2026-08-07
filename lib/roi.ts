@@ -1,42 +1,49 @@
-/** ROI = ((returned - staked) / staked) × 100 */
+/** Tuotto-% = ((palautettu - panostettu) / panostettu) × 100 */
 
-export function calcRoi(staked: number, returned: number): number | null {
+export function calcTuottoPct(staked: number, returned: number): number | null {
   const s = Number(staked)
   const r = Number(returned)
   if (!(s > 0) || !Number.isFinite(s) || !Number.isFinite(r)) return null
   return Math.round(((r - s) / s) * 10000) / 100
 }
 
-/** Minimivetomäärä tulostaulukkoon. */
-export const LEADERBOARD_MIN_BETS = 50
+/** @deprecated use calcTuottoPct */
+export const calcRoi = calcTuottoPct
 
-/**
- * Volyymipaino: score = ROI × bets^α
- * α = 1.04 kalibroitu niin, että 50 vetoa @ 30 % ROI voittaa
- * nipin napin pelaajan jolla 200 vetoa @ 7 % ROI (~+1.4 %).
- */
+/** Minimivetomäärä kuukausilistalle. */
+export const LEADERBOARD_MIN_BETS_MONTHLY = 10
+
+/** Max rows shown in the full leaderboard modal. */
+export const LEADERBOARD_TOP_N = 10
+
+/** Minimimäärä ratkaistuja vetoja kaikkien aikojen listalle. */
+export const LEADERBOARD_MIN_BETS_ALLTIME = 50
+
+/** @deprecated use LEADERBOARD_MIN_BETS_MONTHLY */
+export const LEADERBOARD_MIN_BETS = LEADERBOARD_MIN_BETS_MONTHLY
+
 export const LEADERBOARD_VOLUME_EXPONENT = 1.04
 
-/**
- * Tulostaulukon pisteytys.
- * Palauttaa null jos alle minimivetorajan.
- */
 export function calcLeaderboardScore(
-  roiPct: number,
-  betCount: number
+  tuottoPct: number,
+  betCount: number,
+  minBets = LEADERBOARD_MIN_BETS_MONTHLY
 ): number | null {
-  const roi = Number(roiPct)
+  const pct = Number(tuottoPct)
   const bets = Math.floor(Number(betCount))
-  if (!Number.isFinite(roi) || !Number.isFinite(bets)) return null
-  if (bets < LEADERBOARD_MIN_BETS) return null
-  return Math.round(roi * bets ** LEADERBOARD_VOLUME_EXPONENT * 10000) / 10000
+  if (!Number.isFinite(pct) || !Number.isFinite(bets)) return null
+  if (bets < minBets) return null
+  return Math.round(pct * bets ** LEADERBOARD_VOLUME_EXPONENT * 10000) / 10000
 }
 
-export function formatRoi(roi: number | null | undefined): string {
-  if (roi == null || !Number.isFinite(roi)) return '—'
-  const sign = roi > 0 ? '+' : ''
-  return `${sign}${roi.toLocaleString('fi-FI', {
+export function formatTuotto(pct: number | null | undefined): string {
+  if (pct == null || !Number.isFinite(pct)) return '—'
+  const sign = pct > 0 ? '+' : ''
+  return `${sign}${pct.toLocaleString('fi-FI', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   })}%`
 }
+
+/** @deprecated use formatTuotto */
+export const formatRoi = formatTuotto

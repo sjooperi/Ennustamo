@@ -1,7 +1,7 @@
 'use client'
 
-import { useId, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useId } from 'react'
+import { BadgeTooltip } from '@/components/badge-tooltip'
 import { MARKET_WIZARD_BADGE_LABEL } from '@/lib/community'
 
 type MarketWizardBadgeProps = {
@@ -27,37 +27,18 @@ export function MarketWizardBadge({
   const uid = useId().replace(/:/g, '')
   const px = SIZE_PX[size]
   const mark = showMark && size === 'lg'
-  const rootRef = useRef<HTMLSpanElement>(null)
-  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null)
   const bg = `mv-bg-${uid}`
   const gold = `mv-gold-${uid}`
   const hat = `mv-hat-${uid}`
   const curve = `mv-curve-${uid}`
   const glow = `mv-glow-${uid}`
 
-  const showTip = () => {
-    const rect = rootRef.current?.getBoundingClientRect()
-    if (!rect) return
-    setTipPos({
-      x: rect.left + rect.width / 2,
-      y: rect.top - 8,
-    })
-  }
-
-  const hideTip = () => setTipPos(null)
-
   return (
-    <span
-      ref={rootRef}
-      className={`relative inline-flex shrink-0 ${className}`}
+    <BadgeTooltip
+      label={MARKET_WIZARD_BADGE_LABEL}
+      className={className}
       style={{ width: px, height: px }}
-      role="img"
-      aria-label={MARKET_WIZARD_BADGE_LABEL}
-      onMouseEnter={showTip}
-      onMouseLeave={hideTip}
-      onFocus={showTip}
-      onBlur={hideTip}
-      tabIndex={0}
+      side="below"
     >
       <svg
         width={px}
@@ -198,19 +179,6 @@ export function MarketWizardBadge({
           </text>
         ) : null}
       </svg>
-
-      {tipPos && typeof document !== 'undefined'
-        ? createPortal(
-            <span
-              role="tooltip"
-              className="pointer-events-none fixed z-[200] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-[oklch(0.75_0.12_85)]/40 bg-[oklch(0.18_0.02_70)] px-2.5 py-1 text-[11px] font-semibold tracking-wide text-[oklch(0.9_0.08_90)] shadow-lg"
-              style={{ left: tipPos.x, top: tipPos.y }}
-            >
-              {MARKET_WIZARD_BADGE_LABEL}
-            </span>,
-            document.body
-          )
-        : null}
-    </span>
+    </BadgeTooltip>
   )
 }

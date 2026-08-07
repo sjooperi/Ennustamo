@@ -1,12 +1,14 @@
 'use client'
 
 import { Coins, LogOut, Menu, Search, Shield, Trophy, TrendingUp, UserRound } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { LeaderboardModal } from '@/components/leaderboard-modal'
 import { MarketWizardBadge } from '@/components/market-wizard-badge'
 import { NotificationsMenu } from '@/components/notifications-menu'
+import { OracleBadge, ORACLE_BADGE_LABEL } from '@/components/oracle-badge'
 import { ProfileModal } from '@/components/profile-modal'
+import { TopPredictorBadge, TOP_PREDICTOR_BADGE_LABEL } from '@/components/top-predictor-badge'
 import { useAuth } from '@/lib/auth-context'
 import {
   MARKET_WIZARD_BADGE,
@@ -17,6 +19,10 @@ import {
   initialsFromPublicName,
   resolvePublicName,
 } from '@/lib/display-name'
+import {
+  fetchAllTimeLeaderboard,
+  fetchMonthlyLeaderboard,
+} from '@/lib/leaderboard'
 
 const NAV_LINKS = [
   { label: 'Markkinat', href: '/' },
@@ -29,6 +35,8 @@ export function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [isTopPredictor, setIsTopPredictor] = useState(false)
+  const [isOracle, setIsOracle] = useState(false)
   const { user, profile, ready, balance, openAuth, signOut, refreshProfile } = useAuth()
 
   const publicName = resolvePublicName({
@@ -36,10 +44,33 @@ export function SiteHeader() {
     displayName: profile?.display_name,
     email: user?.email ?? profile?.email,
   })
+  const hasWizardBadge = Boolean(profile?.badges?.includes(MARKET_WIZARD_BADGE))
 
   const navLinks = NAV_LINKS.filter(
     (link) => link.action !== 'admin' || Boolean(profile?.is_admin)
   )
+
+  useEffect(() => {
+    if (!user?.id) {
+      setIsTopPredictor(false)
+      setIsOracle(false)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const [monthTop, allTop] = await Promise.all([
+        fetchMonthlyLeaderboard(1),
+        fetchAllTimeLeaderboard(1),
+      ])
+      if (!cancelled) {
+        setIsTopPredictor(Boolean(monthTop[0]?.id === user.id))
+        setIsOracle(Boolean(allTop[0]?.id === user.id))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
 
   const handleSignOut = async () => {
     await signOut()
@@ -146,18 +177,37 @@ export function SiteHeader() {
                 <button
                   type="button"
                   title={
-                    profile?.badges?.includes(MARKET_WIZARD_BADGE)
-                      ? `${publicName} · ${MARKET_WIZARD_BADGE_LABEL}`
-                      : `${publicName} · muokkaa profiilia`
+                    [
+                      publicName,
+                      isOracle ? ORACLE_BADGE_LABEL : null,
+                      isTopPredictor ? TOP_PREDICTOR_BADGE_LABEL : null,
+                      hasWizardBadge ? MARKET_WIZARD_BADGE_LABEL : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || `${publicName} · muokkaa profiilia`
                   }
                   onClick={openProfile}
                   aria-label="Avaa profiili"
                   className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.6_0.18_265)] text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                 >
                   {initialsFromPublicName(publicName)}
-                  {profile?.badges?.includes(MARKET_WIZARD_BADGE) ? (
-                    <span className="absolute -right-1.5 -bottom-1.5 rounded-full ring-2 ring-background">
-                      <MarketWizardBadge size="md" />
+                  {isOracle || isTopPredictor || hasWizardBadge ? (
+                    <span className="absolute -right-1.5 -bottom-1.5 flex items-center gap-0.5">
+                      {isOracle ? (
+                        <span className="rounded-full ring-2 ring-background">
+                          <OracleBadge size="md" />
+                        </span>
+                      ) : null}
+                      {isTopPredictor ? (
+                        <span className="rounded-full ring-2 ring-background">
+                          <TopPredictorBadge size="md" />
+                        </span>
+                      ) : null}
+                      {hasWizardBadge ? (
+                        <span className="rounded-full ring-2 ring-background">
+                          <MarketWizardBadge size="md" />
+                        </span>
+                      ) : null}
                     </span>
                   ) : null}
                 </button>
@@ -344,6 +394,8 @@ export function SiteHeader() {
         onClose={() => setProfileOpen(false)}
         profile={profile}
         userId={user?.id ?? null}
+        isTopPredictor={isTopPredictor}
+        isOracle={isOracle}
         onSaved={refreshProfile}
       />
     </>

@@ -1,13 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Crown, MessageSquare, TrendingUp } from 'lucide-react'
+import { Crown, Eye, MessageSquare, TrendingUp } from 'lucide-react'
 import { LeaderboardModal } from '@/components/leaderboard-modal'
-import { MarketWizardBadge } from '@/components/market-wizard-badge'
 import { PopularCreatorsPanel } from '@/components/popular-creators-panel'
+import { UserBadges } from '@/components/user-badges'
 import { DISCUSSIONS } from '@/lib/data'
-import { fetchLeaderboard, type LeaderboardRow } from '@/lib/leaderboard'
-import { formatRoi } from '@/lib/roi'
+import {
+  fetchAllTimeLeaderboard,
+  fetchMonthlyLeaderboard,
+  type LeaderboardRow,
+} from '@/lib/leaderboard'
+import { formatTuotto } from '@/lib/roi'
 
 const RANK_STYLES = [
   'bg-[oklch(0.8_0.15_85)] text-[oklch(0.25_0.05_85)]',
@@ -15,15 +19,77 @@ const RANK_STYLES = [
   'bg-[oklch(0.65_0.11_50)] text-[oklch(0.2_0.05_50)]',
 ]
 
+function PredictorList({
+  rows,
+  empty,
+}: {
+  rows: LeaderboardRow[]
+  empty: string
+}) {
+  if (rows.length === 0) {
+    return <p className="mt-4 text-xs text-muted-foreground">{empty}</p>
+  }
+
+  return (
+    <ul className="mt-4 flex flex-col gap-3">
+      {rows.map((user, index) => {
+        const rank = index + 1
+        return (
+          <li key={user.id} className="flex items-center gap-3">
+            <span
+              className={`grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold ${RANK_STYLES[rank - 1] ?? 'bg-secondary text-foreground'}`}
+            >
+              {rank}
+            </span>
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold text-foreground">
+              {user.initials}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                <span className="truncate">{user.name}</span>
+                <UserBadges
+                  size="md"
+                  isOracle={user.isOracle}
+                  isTopPredictor={user.isTopPredictor}
+                  hasMarketWizardBadge={user.hasMarketWizardBadge}
+                />
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                Tulos {user.profit > 0 ? '+' : ''}
+                {Math.round(user.profit)} F
+              </p>
+            </div>
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 font-mono text-sm font-semibold tabular-nums ${
+                user.tuotto >= 0 ? 'text-[var(--yes)]' : 'text-[var(--no)]'
+              }`}
+            >
+              <TrendingUp className="size-3.5" />
+              {formatTuotto(user.tuotto)}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export function CommunitySidebar() {
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
-  const [top, setTop] = useState<LeaderboardRow[]>([])
+  const [monthly, setMonthly] = useState<LeaderboardRow[]>([])
+  const [alltime, setAlltime] = useState<LeaderboardRow[]>([])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const rows = await fetchLeaderboard(3)
-      if (!cancelled) setTop(rows)
+      const [m, a] = await Promise.all([
+        fetchMonthlyLeaderboard(3),
+        fetchAllTimeLeaderboard(3),
+      ])
+      if (!cancelled) {
+        setMonthly(m)
+        setAlltime(a)
+      }
     })()
     return () => {
       cancelled = true
@@ -35,51 +101,12 @@ export function CommunitySidebar() {
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center gap-2">
           <Crown className="size-5 text-[oklch(0.8_0.15_85)]" />
-          <h2 className="text-sm font-semibold">Parhaat ennustajat</h2>
+          <h2 className="text-sm font-semibold">Kuukauden ennustajat</h2>
         </div>
-        <ul className="mt-4 flex flex-col gap-3">
-          {top.length === 0 ? (
-            <li className="text-xs text-muted-foreground">
-              Ei vielä tuloksia. Min. 50 vetoa listalle.
-            </li>
-          ) : (
-            top.map((user, index) => {
-              const rank = index + 1
-              return (
-                <li key={user.id} className="flex items-center gap-3">
-                  <span
-                    className={`grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold ${RANK_STYLES[rank - 1] ?? 'bg-secondary text-foreground'}`}
-                  >
-                    {rank}
-                  </span>
-                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold text-foreground">
-                    {user.initials}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-                      <span className="truncate">{user.name}</span>
-                      {user.hasMarketWizardBadge ? (
-                        <MarketWizardBadge size="md" className="shrink-0" />
-                      ) : null}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      Tulos {user.profit > 0 ? '+' : ''}
-                      {Math.round(user.profit)} F
-                    </p>
-                  </div>
-                  <span
-                    className={`inline-flex shrink-0 items-center gap-1 font-mono text-sm font-semibold tabular-nums ${
-                      user.roi >= 0 ? 'text-[var(--yes)]' : 'text-[var(--no)]'
-                    }`}
-                  >
-                    <TrendingUp className="size-3.5" />
-                    {formatRoi(user.roi)}
-                  </span>
-                </li>
-              )
-            })
-          )}
-        </ul>
+        <PredictorList
+          rows={monthly}
+          empty="Ei vielä tuloksia tältä kuulta."
+        />
         <button
           type="button"
           onClick={() => setLeaderboardOpen(true)}
@@ -87,6 +114,17 @@ export function CommunitySidebar() {
         >
           Näytä koko tulostaulukko
         </button>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center gap-2">
+          <Eye className="size-5 text-[oklch(0.78_0.06_250)]" />
+          <h2 className="text-sm font-semibold">Kaikkien aikojen ennustajat</h2>
+        </div>
+        <PredictorList
+          rows={alltime}
+          empty="Ei vielä tuloksia. Min. 50 ratkaistua vetoa."
+        />
       </section>
 
       <PopularCreatorsPanel />

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Flag, LineChart, X } from 'lucide-react'
 import {
   formatShares,
+  getMarketLiquidity,
   getOptionPrices,
   getPrices,
   isBinaryMarket,
@@ -173,6 +174,15 @@ export function MarketCard({
   })()
   const binaryPrices = getPrices(yesPool, noPool)
   const multiPrices = getOptionPrices(options, market.option_pools)
+  const liquidity = Math.round(
+    getMarketLiquidity({
+      options,
+      yesPool,
+      noPool,
+      optionPools: market.option_pools,
+    })
+  )
+  const volume = Math.round(Number(market.total_volume || 0))
 
   const prices: Record<string, number> = binary
     ? { YES: binaryPrices.yesPrice, NO: binaryPrices.noPrice }
@@ -332,6 +342,24 @@ export function MarketCard({
         {market.title}
       </h3>
 
+      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+        <span>
+          Likviditeetti{' '}
+          <span className="font-semibold tabular-nums text-foreground">
+            {liquidity.toLocaleString('fi-FI')} F
+          </span>
+        </span>
+        <span className="text-border" aria-hidden>
+          ·
+        </span>
+        <span>
+          Volyymi{' '}
+          <span className="font-semibold tabular-nums text-foreground">
+            {volume.toLocaleString('fi-FI')} F
+          </span>
+        </span>
+      </p>
+
       {yesNoUi ? (
         <div className="mt-2">
           <div className="mb-1 grid grid-cols-2 items-center gap-2 text-[11px] font-semibold">
@@ -477,7 +505,9 @@ export function MarketCard({
                     onClick={() => onSell(opt.key)}
                     className="shrink-0 rounded-md bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground ring-1 ring-inset ring-border transition-colors hover:bg-secondary/80 disabled:opacity-50"
                   >
-                    {isSelling ? 'Nostetaan…' : `Nosta ${value.toLocaleString('fi-FI')} F`}
+                    {isSelling
+                      ? 'Myydään…'
+                      : `Myy ${value.toLocaleString('fi-FI')} F`}
                   </button>
                 )}
               </div>
