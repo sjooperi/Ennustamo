@@ -2,15 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/mlb-import",
-      "schedule": "0 7,15 * * *"
+      "schedule": "0 7 * * *"
     },
     {
       "path": "/api/cron/mlb-odds",
-      "schedule": "* * * * *"
+      "schedule": "30 7 * * *"
     },
     {
       "path": "/api/cron/mlb-resolve",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }

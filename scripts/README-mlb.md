@@ -16,7 +16,6 @@
 5. **Ottelun päätyttyä**: `mlb:resolve` lukee MLB Stats API (+ Polymarket fallback) → `resolve_market_system` maksaa potit
 
 Hallintapaneelissa: **Ratkaise urheilukohteet** (ajaa close + resolve heti).
-Cron: resolve joka 5. minuutti.
 
 ## Komennot
 
@@ -29,11 +28,16 @@ npm run mlb:resolve:dry
 npm run mlb:resolve       # Final → payout
 ```
 
-## Cron (Vercel)
+## Cron (Vercel Hobby)
 
-- Import: 07:00 & 15:00 UTC
-- Close-at-start (`mlb-odds`): joka minuutti
-- Resolve + payout (`mlb-resolve`): joka 15. minuutti
+Hobby sallii vain **kerran päivässä** per cron:
+
+- Import: 07:00 UTC
+- Close-at-start: 07:30 UTC
+- Resolve: 08:00 UTC
+
+Tiheämpi ajo: GitHub Action `.github/workflows/mlb-cron.yml` (joka 10 min).
+Aseta repo-secreetit `CRON_SECRET` ja `VERCEL_APP_URL`.
 
 ## Migraatiot (Supabase SQL)
 
