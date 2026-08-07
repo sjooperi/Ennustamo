@@ -3,8 +3,25 @@ import { supabase } from '@/lib/supabase'
 export const COMMUNITY_CATEGORY = 'Yhteisö'
 export const COMMUNITY_CREATOR_STAKE = 50
 export const COMMUNITY_MAX_DAILY = 2
-export const COMMUNITY_RESOLVE_HOURS = 48
+export const COMMUNITY_RESOLVE_HOURS = 24
 export const COMMUNITY_REPORT_THRESHOLD = 5
+export const COMMUNITY_MAX_OPTIONS = 8
+export const COMMUNITY_TOP_CROSS_PROMOTE = 5
+
+/** Fyrkka rewards for top community market creators (by volume rank). */
+export const COMMUNITY_TOP_CREATOR_REWARDS = [200, 150, 100, 50, 25] as const
+
+/** Topic categories community markets can belong to (cross-promoted when in top 5). */
+export const COMMUNITY_TOPIC_CATEGORIES = [
+  'Politiikka',
+  'Talous',
+  'Urheilu',
+  'Viihde',
+  'Teknologia',
+] as const
+
+export type CommunityTopicCategory =
+  (typeof COMMUNITY_TOPIC_CATEGORIES)[number]
 
 export const COMMUNITY_REPORT_REASONS = [
   'Epäselvä',
@@ -17,7 +34,8 @@ export type CreateCommunityMarketInput = {
   title: string
   options: string[]
   endDate: string
-  resolutionCriteria: string
+  resolutionCriteria?: string | null
+  topicCategory: CommunityTopicCategory | string
 }
 
 function translateCommunityError(message: string): string {
@@ -29,11 +47,17 @@ function translateCommunityError(message: string): string {
     return `Saldo ei riitä panttiin (${COMMUNITY_CREATOR_STAKE} Fyrkkaa).`
   }
   if (message.includes('INVALID_TITLE')) return 'Kirjoita vähintään 3 merkin kysymys.'
+  if (message.includes('TOO_MANY_OPTIONS')) {
+    return `Voit asettaa enintään ${COMMUNITY_MAX_OPTIONS} vaihtoehtoa.`
+  }
   if (message.includes('INVALID_OPTIONS')) {
     return 'Lisää vähintään kaksi eri vastausvaihtoehtoa.'
   }
   if (message.includes('INVALID_END_DATE')) {
     return 'Sulkeutumisajan pitää olla tulevaisuudessa.'
+  }
+  if (message.includes('INVALID_TOPIC')) {
+    return 'Valitse kategoria, johon kohde kuuluu.'
   }
   if (message.includes('INVALID_CRITERIA')) {
     return 'Kerro lyhyesti, miten kohde ratkaistaan.'
@@ -57,12 +81,14 @@ function translateCommunityError(message: string): string {
 export async function createCommunityMarket(
   input: CreateCommunityMarketInput
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const criteria = (input.resolutionCriteria || '').trim()
   const { data, error } = await supabase.rpc('create_community_market', {
     p_title: input.title,
     p_options: input.options,
     p_end_date: input.endDate,
-    p_resolution_criteria: input.resolutionCriteria,
+    p_resolution_criteria: criteria.length > 0 ? criteria : null,
     p_stake: COMMUNITY_CREATOR_STAKE,
+    p_topic_category: input.topicCategory,
   })
 
   if (error) {
@@ -122,4 +148,26 @@ export function isCommunityMarket(market: {
 }): boolean {
   const c = (market.category || '').normalize('NFC').trim().toLowerCase()
   return c === 'yhteisö' || c === 'yhteiso'
+}
+
+/** Top N community markets by volume (for cross-promoting into topic categories). */
+export function topCommunityMarketIds<
+  T extends { id: string; category?: string | null; total_volume?: number | null },
+>(markets: T[], limit = COMMUNITY_TOP_CROSS_PROMOTE): Set<string> {
+  const ranked = markets
+    .filter((m) => isCommunityMarket(m))
+    .sort(
+      (a, b) => Number(b.total_volume || 0) - Number(a.total_volume || 0)
+    )
+    .slice(0, limit)
+  return new Set(ranked.map((m) => m.id))
+}
+
+export function topicCategoryOf(market: {
+  topic_category?: string | null
+  metadata?: Record<string, unknown> | null
+}): string | null {
+  if (market.topic_category) return String(market.topic_category)
+  const meta = market.metadata?.topic_category
+  return typeof meta === 'string' && meta.trim() ? meta.trim() : null
 }

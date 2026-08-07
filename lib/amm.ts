@@ -183,6 +183,88 @@ export function quoteBuy(
   }
 }
 
+export type SellQuote = {
+  proceeds: number
+  avgPrice: number
+  newYesPool: number
+  newNoPool: number
+  priceBefore: number
+  priceAfter: number
+}
+
+/** Exact CPMM inverse of quoteBuy — sell `shares` back into the pool. */
+export function quoteSell(
+  yesPool: number,
+  noPool: number,
+  choice: 'YES' | 'NO',
+  shares: number
+): SellQuote | null {
+  if (!(shares > 0)) return null
+
+  const { yesPool: yes, noPool: no } = normalizePools(yesPool, noPool)
+  const k = yes * no
+  const { yesPrice, noPrice } = getPrices(yesPool, noPool)
+
+  if (choice === 'YES') {
+    const priceBefore = yesPrice
+    const b = shares + yes - no
+    const disc = b * b + 4 * k
+    if (disc < 0) return null
+    const newNoPool = (-b + Math.sqrt(disc)) / 2
+    if (!(newNoPool > 0) || !(newNoPool < no)) return null
+    const proceeds = no - newNoPool
+    if (!(proceeds > 0)) return null
+    const newYesPool = k / newNoPool
+    const avgPrice = proceeds / shares
+    const priceAfter = newNoPool / (newYesPool + newNoPool)
+    return {
+      proceeds,
+      avgPrice,
+      newYesPool,
+      newNoPool,
+      priceBefore,
+      priceAfter,
+    }
+  }
+
+  const priceBefore = noPrice
+  const b = shares + no - yes
+  const disc = b * b + 4 * k
+  if (disc < 0) return null
+  const newYesPool = (-b + Math.sqrt(disc)) / 2
+  if (!(newYesPool > 0) || !(newYesPool < yes)) return null
+  const proceeds = yes - newYesPool
+  if (!(proceeds > 0)) return null
+  const newNoPool = k / newYesPool
+  const avgPrice = proceeds / shares
+  const priceAfter = newYesPool / (newYesPool + newNoPool)
+  return {
+    proceeds,
+    avgPrice,
+    newYesPool,
+    newNoPool,
+    priceBefore,
+    priceAfter,
+  }
+}
+
+/** Multi-option sell at spot: proceeds = shares * price_i. */
+export function quoteMultiSell(
+  options: MarketOptionDef[],
+  pools: Record<string, number> | null | undefined,
+  choice: string,
+  shares: number
+): { proceeds: number; price01: number } | null {
+  if (!(shares > 0)) return null
+  const key = choice.toUpperCase()
+  const prices = getOptionPrices(options, pools)
+  const price01 = prices[key]
+  if (!(price01 > 0)) return null
+  const proceeds = shares * price01
+  if (!(proceeds > 0)) return null
+  return { proceeds, price01 }
+}
+
 export function formatPct(price: number): string {
   return `${Math.round(price * 100)}%`
 }

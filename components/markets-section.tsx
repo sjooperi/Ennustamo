@@ -22,6 +22,8 @@ import { CommunityCreateForm } from '@/components/community-create-form'
 import {
   COMMUNITY_CATEGORY,
   isCommunityMarket,
+  topCommunityMarketIds,
+  topicCategoryOf,
   reportCommunityMarket,
   resolveCommunityMarket,
 } from '@/lib/community'
@@ -35,6 +37,7 @@ function translateBetError(message: string): string {
   if (message.includes('INVALID_AMOUNT')) return 'Virheellinen panos.'
   if (message.includes('MARKET_NOT_FOUND')) return 'Kohdetta ei löytynyt.'
   if (message.includes('INVALID_SHARES')) return 'Panos on liian pieni tälle markkinalle.'
+  if (message.includes('NO_POSITION')) return 'Ei nostettavaa positiota.'
   if (message.includes('MARKET_CLOSED')) return 'Kohde on suljettu — ottelu on alkanut tai ratkaistu.'
   if (message.includes('DAILY_LIMIT')) return 'Voit luoda enintään 2 kohdetta päivässä.'
   return message
@@ -92,6 +95,11 @@ function toLiveMarket(row: MarketRow): LiveMarket & { created_at?: string } {
     creator_stake: Number(row.creator_stake || 0),
     stake_status: row.stake_status ? String(row.stake_status) : null,
     total_volume: Number(row.total_volume || 0),
+    topic_category: row.topic_category
+      ? String(row.topic_category)
+      : typeof metadata?.topic_category === 'string'
+        ? metadata.topic_category
+        : null,
   }
 }
 
@@ -115,6 +123,7 @@ export function MarketsSection() {
   const [userPositions, setUserPositions] = useState<Record<string, UserPosition[]>>({})
   const [loading, setLoading] = useState(true)
   const [bettingMarketId, setBettingMarketId] = useState<string | null>(null)
+  const [sellingMarketId, setSellingMarketId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState('Kaikki')
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -349,7 +358,7 @@ export function MarketsSection() {
       return
     }
 
-    if (bettingMarketId) return
+    if (bettingMarketId || sellingMarketId) return
 
     setBettingMarketId(marketId)
 
@@ -377,6 +386,45 @@ export function MarketsSection() {
 
     await refreshProfile()
     setBettingMarketId(null)
+    void loadData()
+  }
+
+  const handleSell = async (marketId: string, choice: string) => {
+    setActionError(null)
+    setActionOk(null)
+
+    if (!user) {
+      openAuth('login')
+      return
+    }
+
+    if (bettingMarketId || sellingMarketId) return
+
+    setSellingMarketId(marketId)
+
+    const { data, error } = await supabase.rpc('sell_position', {
+      p_market_id: marketId,
+      p_choice: choice.toUpperCase(),
+    })
+
+    if (error) {
+      setActionError(translateBetError(error.message))
+      setSellingMarketId(null)
+      return
+    }
+
+    const proceeds = Number(
+      (data as { proceeds?: number } | null)?.proceeds ?? 0
+    )
+    const profit = Number((data as { profit?: number } | null)?.profit ?? 0)
+    setActionOk(
+      profit >= 0
+        ? `Nostit ${proceeds.toLocaleString('fi-FI')} F (+${profit.toLocaleString('fi-FI')} F).`
+        : `Nostit ${proceeds.toLocaleString('fi-FI')} F (${profit.toLocaleString('fi-FI')} F).`
+    )
+
+    await refreshProfile()
+    setSellingMarketId(null)
     void loadData()
   }
 
@@ -442,6 +490,7 @@ export function MarketsSection() {
   }, [markets])
 
   const filteredMarkets = useMemo(() => {
+    const topCommunity = topCommunityMarketIds(markets)
     let list = markets
     if (selectedCategory.toLowerCase() === 'yhteisö') {
       list = list.filter((market) => isCommunityMarket(market))
@@ -449,9 +498,15 @@ export function MarketsSection() {
         (a, b) => Number(b.total_volume || 0) - Number(a.total_volume || 0)
       )
     } else if (selectedCategory !== 'Kaikki') {
-      list = list.filter(
-        (market) => market.category?.toLowerCase() === selectedCategory.toLowerCase()
-      )
+      const cat = selectedCategory.toLowerCase()
+      list = list.filter((market) => {
+        if (isCommunityMarket(market)) {
+          if (!topCommunity.has(market.id)) return false
+          const topic = (topicCategoryOf(market) || '').toLowerCase()
+          return topic === cat
+        }
+        return market.category?.toLowerCase() === cat
+      })
       // Non-community categories: only actively bettable
       list = list.filter((m) => isOpenForBetting(m))
     } else {
@@ -462,8 +517,10 @@ export function MarketsSection() {
       selectedSubcategory &&
       selectedSubcategory !== 'Kaikki'
     ) {
+      // Keep top community sports in "Kaikki" only; sport subfilters are official listings
       list = list.filter(
         (market) =>
+          !isCommunityMarket(market) &&
           market.subcategory?.toLowerCase() === selectedSubcategory.toLowerCase()
       )
     }
@@ -518,10 +575,12 @@ export function MarketsSection() {
         balance={balance}
         positions={userPositions[market.id] ?? []}
         isBetting={bettingMarketId === market.id}
+        isSelling={sellingMarketId === market.id}
         isLoggedIn={!!user}
         currentUserId={user?.id}
         onStakeChange={(value) => setStake(market.id, value)}
         onBet={(choice) => handleBet(market.id, choice)}
+        onSell={(choice) => handleSell(market.id, choice)}
         onLogin={() => openAuth('login')}
         onResolveCommunity={
           isCommunityMarket(market) ? handleResolveCommunity : undefined

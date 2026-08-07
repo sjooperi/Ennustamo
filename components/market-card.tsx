@@ -9,6 +9,8 @@ import {
   isBinaryMarket,
   pctIntsSummingTo100,
   quoteFixedOdds,
+  quoteMultiSell,
+  quoteSell,
   toDisplayShares,
   type MarketOptionDef,
 } from '@/lib/amm'
@@ -26,6 +28,7 @@ export type LiveMarket = {
   title: string
   category: string
   subcategory?: string | null
+  topic_category?: string | null
   end_date: string
   yes_pool: number
   no_pool: number
@@ -76,11 +79,13 @@ export type MarketCardProps = {
   currentUserId?: string | null
   onStakeChange: (value: number) => void
   onBet: (choice: string) => void
+  onSell: (choice: string) => void
   onLogin: () => void
   onResolveCommunity?: (marketId: string, winningOption: string) => Promise<void>
   onReportCommunity?: (marketId: string, reason: string) => Promise<void>
   isResolving?: boolean
   isReporting?: boolean
+  isSelling?: boolean
 }
 
 export function MarketCard({
@@ -95,11 +100,13 @@ export function MarketCard({
   currentUserId,
   onStakeChange,
   onBet,
+  onSell,
   onLogin,
   onResolveCommunity,
   onReportCommunity,
   isResolving,
   isReporting,
+  isSelling,
 }: MarketCardProps) {
   // Charts closed by default; rename avoids Fast Refresh keeping old open state
   const [chartOpen, setChartOpen] = useState(false)
@@ -218,7 +225,20 @@ export function MarketCard({
     : optionVisualStyle(options, 0)
 
   const stakePanelOpen = pendingChoice !== null
-  const hasPositions = positions.some((p) => p.amount > 0)
+  const hasPositions = options.some((opt) => sharesByChoice(opt.key) > 0.0000001)
+
+  const cashOutQuote = (key: string) => {
+    const shares = sharesByChoice(key)
+    if (!(shares > 0)) return null
+    if (binary && (key === 'YES' || key === 'NO')) {
+      const q = quoteSell(yesPool, noPool, key, shares)
+      if (!q) return null
+      return Math.round(q.proceeds * 100) / 100
+    }
+    const q = quoteMultiSell(options, market.option_pools, key, shares)
+    if (!q) return null
+    return Math.round(q.proceeds * 100) / 100
+  }
 
   const accumulateToPot = (delta: number) => {
     if (!(delta > 0)) return
@@ -255,9 +275,11 @@ export function MarketCard({
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 font-medium text-foreground">
-            {market.subcategory
-              ? `${market.category || 'Yleinen'} · ${market.subcategory}`
-              : market.category || 'Yleinen'}
+            {isCommunity && market.topic_category
+              ? `Yhteisö · ${market.topic_category}`
+              : market.subcategory
+                ? `${market.category || 'Yleinen'} · ${market.subcategory}`
+                : market.category || 'Yleinen'}
           </span>
           {bettingClosed && (
             <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 font-semibold text-muted-foreground">
@@ -405,24 +427,63 @@ export function MarketCard({
       ) : null}
 
       {hasPositions && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Positiosi:{' '}
-          {options
-            .map((opt) => {
-              const spent = spentByChoice(opt.key)
-              const shares = sharesByChoice(opt.key)
-              if (!(spent > 0)) return null
-              return (
-                <span key={opt.key} className="mr-2 font-semibold text-foreground">
-                  {spent} F {opt.label}
-                  {shares > 0
-                    ? ` (${formatShares(toDisplayShares(shares))} os.)`
-                    : ''}
-                </span>
-              )
-            })
-            .filter(Boolean)}
-        </p>
+        <div className="mt-2 space-y-1.5">
+          {options.map((opt) => {
+            const shares = sharesByChoice(opt.key)
+            if (!(shares > 0.0000001)) return null
+            const spent = Math.max(0, spentByChoice(opt.key))
+            const value = cashOutQuote(opt.key)
+            const profit =
+              value != null ? Math.round((value - spent) * 100) / 100 : null
+            const canCashOut =
+              !bettingClosed && isLoggedIn && value != null && value >= 0.01
+            return (
+              <div
+                key={opt.key}
+                className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+              >
+                <p className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {spent.toLocaleString('fi-FI')} F {opt.label}
+                  </span>
+                  {' · '}
+                  {formatShares(toDisplayShares(shares))} os.
+                  {value != null && (
+                    <>
+                      {' · arvo '}
+                      <span className="font-semibold tabular-nums text-foreground">
+                        {value.toLocaleString('fi-FI')} F
+                      </span>
+                      {profit != null && (
+                        <span
+                          className={
+                            profit >= 0
+                              ? 'text-[var(--yes)]'
+                              : 'text-[var(--no)]'
+                          }
+                        >
+                          {' '}
+                          ({profit >= 0 ? '+' : ''}
+                          {profit.toLocaleString('fi-FI')} F)
+                        </span>
+                      )}
+                    </>
+                  )}
+                </p>
+                {canCashOut && (
+                  <button
+                    type="button"
+                    disabled={isBetting || isSelling}
+                    onClick={() => onSell(opt.key)}
+                    className="shrink-0 rounded-md bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground ring-1 ring-inset ring-border transition-colors hover:bg-secondary/80 disabled:opacity-50"
+                  >
+                    {isSelling ? 'Nostetaan…' : `Nosta ${value.toLocaleString('fi-FI')} F`}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
 
       <div
