@@ -12,7 +12,13 @@
     "mlb:odds": "node scripts/sync-mlb-odds.mjs",
     "mlb:odds:dry": "node scripts/sync-mlb-odds.mjs --dry-run",
     "mlb:resolve": "node scripts/resolve-mlb-markets.mjs",
-    "mlb:resolve:dry": "node scripts/resolve-mlb-markets.mjs --dry-run"
+    "mlb:resolve:dry": "node scripts/resolve-mlb-markets.mjs --dry-run",
+    "superpesis:import": "node scripts/import-superpesis-markets.mjs --allow-even",
+    "superpesis:import:dry": "node scripts/import-superpesis-markets.mjs --dry-run --allow-even",
+    "superpesis:odds": "node scripts/sync-superpesis-odds.mjs",
+    "superpesis:odds:dry": "node scripts/sync-superpesis-odds.mjs --dry-run",
+    "superpesis:resolve": "node scripts/resolve-superpesis-markets.mjs",
+    "superpesis:resolve:dry": "node scripts/resolve-superpesis-markets.mjs --dry-run"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

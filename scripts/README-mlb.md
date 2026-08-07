@@ -28,16 +28,24 @@ npm run mlb:resolve:dry
 npm run mlb:resolve       # Final → payout
 ```
 
-## Cron (Vercel Hobby)
+## Cron
 
-Hobby sallii vain **kerran päivässä** per cron:
+Ei jatkuvaa live-seurantaa. Riittää, että uudet kohteet ilmestyvät ja
+vedot ratkeavat **kohtuullisen ajan** kuluessa (tyypillisesti muutaman tunnin sisällä).
+
+**GitHub Action** `.github/workflows/mlb-cron.yml` — joka **3 h** (UTC):
+
+1. `mlb-import` — uudet Polymarket-moneylinet
+2. `mlb-odds` — sulkee alkaneet ottelut (`closed`)
+3. `mlb-resolve` — Final-tulos → payout
+
+Aseta repo-secreetit `CRON_SECRET` ja `VERCEL_APP_URL`.
+
+**Vercel Hobby** (kertapäivä-varmistus `vercel.json`):
 
 - Import: 07:00 UTC
 - Close-at-start: 07:30 UTC
 - Resolve: 08:00 UTC
-
-Tiheämpi ajo: GitHub Action `.github/workflows/mlb-cron.yml` (joka 10 min).
-Aseta repo-secreetit `CRON_SECRET` ja `VERCEL_APP_URL`.
 
 ## Migraatiot (Supabase SQL)
 

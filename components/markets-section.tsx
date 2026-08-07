@@ -488,6 +488,7 @@ export function MarketsSection() {
       }
     }
     if (!set.has('MLB')) set.add('MLB')
+    if (!set.has('Superpesis')) set.add('Superpesis')
     return ['Kaikki', ...Array.from(set).sort((a, b) => a.localeCompare(b, 'fi'))]
   }, [markets])
 
@@ -534,11 +535,12 @@ export function MarketsSection() {
     return list
   }, [markets, selectedCategory, selectedSubcategory])
 
-  const mlbDayGroups = useMemo(() => {
-    const isMlbView =
+  const sportDayGroups = useMemo(() => {
+    const sub = selectedSubcategory?.toLowerCase()
+    const isDayView =
       selectedCategory.toLowerCase() === 'urheilu' &&
-      selectedSubcategory?.toLowerCase() === 'mlb'
-    if (!isMlbView) return null
+      (sub === 'mlb' || sub === 'superpesis')
+    if (!isDayView) return null
 
     const groups = new Map<string, typeof filteredMarkets>()
     for (const m of filteredMarkets) {
@@ -677,9 +679,9 @@ export function MarketsSection() {
         <div className="py-12 text-center text-sm text-muted-foreground">
           Ei kohteita tässä kategoriassa.
         </div>
-      ) : mlbDayGroups ? (
+      ) : sportDayGroups ? (
         <div className="flex flex-col gap-6">
-          {mlbDayGroups.map(([day, dayMarkets]) => (
+          {sportDayGroups.map(([day, dayMarkets]) => (
             <section key={day} className="flex flex-col gap-2.5">
               <h3 className="text-sm font-semibold capitalize text-foreground">
                 {day === 'muut' ? 'Muut ottelut' : formatGameDayHeading(day)}

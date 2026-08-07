@@ -13,6 +13,18 @@
       "schedule": "0 8 * * *"
     },
     {
+      "path": "/api/cron/superpesis-import",
+      "schedule": "15 7 * * *"
+    },
+    {
+      "path": "/api/cron/superpesis-odds",
+      "schedule": "45 7 * * *"
+    },
+    {
+      "path": "/api/cron/superpesis-resolve",
+      "schedule": "15 8 * * *"
+    },
+    {
       "path": "/api/cron/community-slash",
       "schedule": "0 9 * * *"
     },

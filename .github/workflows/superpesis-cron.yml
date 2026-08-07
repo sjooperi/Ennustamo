@@ -1,0 +1,39 @@
+# Superpesis sync without continuous polling.
+# Import new markets (OddsPortal odds + Pesistulokset schedule),
+# close started games, and resolve finished ones a few times per day.
+#
+# Requires repo secrets: CRON_SECRET, VERCEL_APP_URL
+
+name: Superpesis cron
+
+on:
+  schedule:
+    # Every 3 hours (UTC), offset from MLB
+    - cron: '30 */3 * * *'
+  workflow_dispatch:
+
+jobs:
+  superpesis-tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Import, close, resolve Superpesis markets
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.VERCEL_APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "VERCEL_APP_URL secret missing — skip"
+            exit 0
+          fi
+          AUTH_HEADER=()
+          if [ -n "${CRON_SECRET:-}" ]; then
+            AUTH_HEADER=(-H "Authorization: Bearer ${CRON_SECRET}")
+          fi
+          BASE="${APP_URL%/}"
+          echo "→ superpesis-import"
+          curl -fsS "${AUTH_HEADER[@]}" "${BASE}/api/cron/superpesis-import" | tee /tmp/sp-import.json
+          echo "→ superpesis-odds (close at game start)"
+          curl -fsS "${AUTH_HEADER[@]}" "${BASE}/api/cron/superpesis-odds" | tee /tmp/sp-odds.json
+          echo "→ superpesis-resolve"
+          curl -fsS "${AUTH_HEADER[@]}" "${BASE}/api/cron/superpesis-resolve" | tee /tmp/sp-resolve.json

@@ -160,7 +160,7 @@ export async function runMlbImport(options = {}) {
     }
 
     const { data, error } = await supabase.rpc('create_market_system', {
-      p_title: `MLB: ${g.title} (${g.gameDate})`,
+      p_title: `MLB: ${g.title}`,
       p_options: [g.away, g.home],
       p_category: 'Urheilu',
       p_end_date: closesAt,

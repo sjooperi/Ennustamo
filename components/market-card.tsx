@@ -140,7 +140,9 @@ export function MarketCard({
     market.end_date ||
     null
   const isGameClose =
-    typeof market.metadata?.game_start === 'string' || market.subcategory === 'MLB'
+    typeof market.metadata?.game_start === 'string' ||
+    market.subcategory === 'MLB' ||
+    market.subcategory === 'Superpesis'
   const statusLower = String(market.status || 'open').toLowerCase()
   const resolveDeadlineMs = market.resolution_deadline
     ? new Date(market.resolution_deadline).getTime()

@@ -271,7 +271,7 @@ export async function resolveMarket(
   }
 }
 
-/** Auto-resolve finished sports (MLB) from official results + pay winners. */
+/** Auto-resolve finished sports (MLB + Superpesis) from official results + pay winners. */
 export async function resolveSportsMarkets(): Promise<
   | { ok: true; resolved: number; pending: number; failed: number }
   | { ok: false; error: string }

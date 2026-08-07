@@ -1,19 +1,24 @@
-# Frequent MLB sync/resolve (Vercel Hobby allows only 1 run/day per cron).
+# MLB sync without continuous polling.
+# Import new markets, close started games, and resolve finished ones
+# a few times per day — enough for payouts soon after games end and
+# new listings soon after they appear on Polymarket.
+#
 # Requires repo secrets: CRON_SECRET, VERCEL_APP_URL (e.g. https://ennustamo.vercel.app)
+# Vercel Hobby crons remain once-daily backups (see vercel.json).
 
 name: MLB cron
 
 on:
   schedule:
-    # Every 10 minutes
-    - cron: '*/10 * * * *'
+    # Every 3 hours (UTC)
+    - cron: '0 */3 * * *'
   workflow_dispatch:
 
 jobs:
   mlb-tick:
     runs-on: ubuntu-latest
     steps:
-      - name: Close started games
+      - name: Import, close, resolve MLB markets
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           APP_URL: ${{ secrets.VERCEL_APP_URL }}
@@ -27,5 +32,10 @@ jobs:
           if [ -n "${CRON_SECRET:-}" ]; then
             AUTH_HEADER=(-H "Authorization: Bearer ${CRON_SECRET}")
           fi
-          curl -fsS "${AUTH_HEADER[@]}" "${APP_URL%/}/api/cron/mlb-odds" | tee /tmp/odds.json
-          curl -fsS "${AUTH_HEADER[@]}" "${APP_URL%/}/api/cron/mlb-resolve" | tee /tmp/resolve.json
+          BASE="${APP_URL%/}"
+          echo "→ mlb-import"
+          curl -fsS "${AUTH_HEADER[@]}" "${BASE}/api/cron/mlb-import" | tee /tmp/import.json
+          echo "→ mlb-odds (close at game start)"
+          curl -fsS "${AUTH_HEADER[@]}" "${BASE}/api/cron/mlb-odds" | tee /tmp/odds.json
+          echo "→ mlb-resolve"
+          curl -fsS "${AUTH_HEADER[@]}" "${BASE}/api/cron/mlb-resolve" | tee /tmp/resolve.json

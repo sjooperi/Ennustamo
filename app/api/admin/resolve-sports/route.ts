@@ -1,14 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { parseResolveDone, runMlbScript } from '@/lib/run-mlb-cli'
+import { parseResolveDone, runSportsScript } from '@/lib/run-sports-cli'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 /**
- * Admin-triggered sports resolution (MLB).
- * Uses MLB Stats API results → resolve_market_system (pays Fyrkka).
+ * Admin-triggered sports resolution (MLB + Superpesis).
+ * Closes started games, then resolves finished ones and pays Fyrkka.
  */
 export async function POST(request: Request) {
   const auth = request.headers.get('authorization')
@@ -33,19 +33,37 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Close started games first, then resolve finals
-    await runMlbScript('sync-mlb-odds.mjs')
-    const { code, stdout, stderr } = await runMlbScript('resolve-mlb-markets.mjs')
-    const stats = parseResolveDone(stdout)
-    if (code !== 0) {
+    await runSportsScript('sync-mlb-odds.mjs')
+    await runSportsScript('sync-superpesis-odds.mjs')
+
+    const mlb = await runSportsScript('resolve-mlb-markets.mjs')
+    const sp = await runSportsScript('resolve-superpesis-markets.mjs')
+
+    const mlbStats = parseResolveDone(mlb.stdout)
+    const spStats = parseResolveDone(sp.stdout)
+
+    if (mlb.code !== 0 && sp.code !== 0) {
       return NextResponse.json(
-        { error: stderr || stdout || 'resolve failed', ...stats },
+        {
+          error: mlb.stderr || sp.stderr || mlb.stdout || sp.stdout || 'resolve failed',
+          mlb: mlbStats,
+          superpesis: spStats,
+        },
         { status: 500 }
       )
     }
+
+    const resolved = (mlbStats?.resolved || 0) + (spStats?.resolved || 0)
+    const pending = (mlbStats?.pending || 0) + (spStats?.pending || 0)
+    const failed = (mlbStats?.failed || 0) + (spStats?.failed || 0)
+
     return NextResponse.json({
       ok: true,
-      ...(stats || { resolved: 0, pending: 0, failed: 0 }),
+      resolved,
+      pending,
+      failed,
+      mlb: mlbStats,
+      superpesis: spStats,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
