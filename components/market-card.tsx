@@ -81,7 +81,8 @@ export function MarketCard({
   onBet,
   onLogin,
 }: MarketCardProps) {
-  const [showChart, setShowChart] = useState(false)
+  // Charts closed by default; rename avoids Fast Refresh keeping old open state
+  const [chartOpen, setChartOpen] = useState(false)
   const [pendingChoice, setPendingChoice] = useState<string | null>(null)
 
   const options: MarketOptionDef[] =
@@ -222,10 +223,11 @@ export function MarketCard({
         </div>
         <button
           type="button"
-          onClick={() => setShowChart((open) => !open)}
-          aria-pressed={showChart}
+          onClick={() => setChartOpen((open) => !open)}
+          aria-pressed={chartOpen}
+          aria-label={chartOpen ? 'Piilota graafi' : 'Näytä graafi'}
           className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium transition-colors ${
-            showChart
+            chartOpen
               ? 'bg-primary/15 text-primary'
               : 'hover:bg-secondary hover:text-foreground'
           }`}
@@ -325,13 +327,13 @@ export function MarketCard({
         </div>
       )}
 
-      {showChart && (
+      {chartOpen ? (
         <MarketPriceChart
           points={priceHistory}
           series={chartSeries}
           className="mt-2"
         />
-      )}
+      ) : null}
 
       {hasPositions && (
         <p className="mt-2 text-[11px] text-muted-foreground">
